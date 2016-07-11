@@ -8,27 +8,37 @@ import time
 import scipy.optimize as opt
 
 class TwinExperiment:
-    def __init__(self, f, Lidx, RM, RF0, data_file=None, Y=None,
-                 t=None, P=(), Pidx=(), adolcID=0):
+    def __init__(self, f, dt, D, Lidx, RM, RF0,
+                 stim_file=None, stim=None, data_file=None, Y=None, t=None,
+                 P=(), Pidx=(), adolcID=0):
         self.f = f
+        self.dt = dt
+        self._D = D
         self._Lidx = Lidx
         self._L = len(Lidx)
-        assert(RM.shape == (self._L, self._L))
         self.RM = RM
         self.RF0 = RF0
-        self._D = RF0.shape[1]  # works for 2- or 3-D RF
-        # optional
+        self.t = t
+
+        # load data
         if data_file is None:
             self.Y = Y
-            self.t = t
         else:
             self.load_data(data_file)
-        self._N = len(self.t)
+
+        # load stim
+        if stim_file is None:
+            self.stim = stim
+        else:
+            self.load_stim(stim_file)
+
+        self._N = self.Y.shape[0]
         self.P = P
         self.Pidx = Pidx
         self._NP = len(P[0])
         self._NPest = len(Pidx)
         self.adolcID = adolcID
+
         # other stuff
         self.A = self.A_gaussian
         self._taped = False
@@ -46,8 +56,12 @@ class TwinExperiment:
             data = np.load(data_file)
         else:
             data = np.loadtxt(data_file)
-        self.t = data[:,0]
         self.Y = data[:,1:]
+
+    def load_stim(self, stim_file):
+        """
+        Load stimulus for experimental data from file.
+        """
 
     ############################################################################
     # Gaussian action
@@ -75,14 +89,23 @@ class TwinExperiment:
         if X.ndim == 1:
             X = np.reshape(X, (self._N, self._D))
         err = 0.0
-        diff = X[:,self._Lidx] - self.Y        
-        if self.RM.ndim == 2:
-            for diffn in diff:
-                err += np.dot(diffn, np.dot(self.RM, diffn))
+        diff = X[:,self._Lidx] - self.Y
+
+        if type(self.RM) == np.ndarray:
+            if self.RM.shape == (self._N, self._L):
+                err = np.sum(self.RM * diff * diff)
+            elif self.RM.shape == (self._L, self._L):
+                for diffn in diff:
+                    err += np.dot(diffn, np.dot(self.RM, diffn))
+            elif self.RM.shape == (self._N, self._L, self._L):
+                for diffn,RMn in zip(diff, self._RM):
+                    err += np.dot(diffn, np.dot(RMn, diffn))
+            else:
+                print("ERROR: RM is in an invalid shape.")
         else:
-            for diffn,RMn in zip(diff,self.RM):
-                err += np.dot(diffn, np.dot(RMn, diffn))
-        return err / (2.0 * self._L * self._N)
+            err = self.RM * np.sum(diff * diff)
+
+        return err / (self._L * self._N)
 
     def fe_gaussian(self, X):
         """
@@ -93,59 +116,58 @@ class TwinExperiment:
             if self._NPest > 0:
                 self.P[self.Pidx] = X[-self._NPest:]
         err = 0.0
-        dt = np.tile(self.t[1:] - self.t[:-1], (self._D,1)).T
-        diff = (X[1:] - X[:-1]) / dt - self.disc(X, dt)
-        if self.RF.ndim == 2:
-            for diffn in diff:
-                err += np.dot(diffn, np.dot(self.RF, diffn))
-        else:
-            for diffn,RFn in zip(diff,self.RF):
-                err += np.dot(diffn, np.dot(RFn, diffn))
-        return err / (2.0 * self._D * (self._N-1))
+        diff = X[1:] - X[:-1] - self.disc(X)
 
-    # Gaussian action terms for scalar Rf and Rm
-    def me_gaussian_scalRfRm(self, X):
+        if type(self.RF) == np.ndarray:
+            if self.RF.shape == (self._N - 1, self._D):
+                err = np.sum(self.RF * diff * diff)
+            elif self.RF.shape == (self._D, self._D):
+                for diffn in diff:
+                    err += np.dot(diff, self.RF, diff)
+            elif self.RF.shape == (self._N - 1, self._D, self._D):
+                for diffn,RFn in zip(diff, self.RF):
+                    err += np.dot(diffn, np.dot(RFn, diffn))
+            else:
+                print("ERROR: RF is in an invalid shape.")
+        else:
+            err = self.RF * np.sum(diff * diff)
+
+        return err / (self._D * (self._N - 1))
+
+    # Error time series functions.
+    def me_gaussian_TS(self, X):
         """
-        Gaussian measurement error.
+        Returns a time series of (normalized) measurement errors.
         """
         if X.ndim == 1:
             X = np.reshape(X, (self._N, self._D))
-        err = 0.0
-        diff = X[:,self._Lidx] - self.Y        
-        if self.RM.ndim == 2:
-            for diffn in diff:
-                err += np.dot(diffn, np.dot(self.RM, diffn))
-        else:
-            for diffn,RMn in zip(diff,self.RM):
-                err += np.dot(diffn, np.dot(RMn, diffn))
-        return err / (2.0 * self._L * self._N)
+        err = np.zeros((self._N, self._L))
+        diff = X[:,self._Lidx] - self.Y
 
-    def fe_gaussian_scalRfRm(self, X):
-        """
-        Gaussian model error.
-        """
-        if X.ndim == 1:
-            X = np.reshape(X, (self._N, self._D))
-            if self._NPest > 0:
-                self.P[self.Pidx] = X[-self._NPest:]
-        err = 0.0
-        dt = np.tile(self.t[1:] - self.t[:-1], (self._D,1)).T
-        diff = (X[1:] - X[:-1]) / dt - self.disc(X, dt)
-        if self.RF.ndim == 2:
-            for diffn in diff:
-                err += np.dot(diffn, np.dot(self.RF, diffn))
+        if type(self.RM) == np.ndarray:
+            if self.RM.shape == (self._N, self._L):
+                err = self.RM * diff * diff
+            elif self.RM.shape == (self._L, self._L):
+                for diffn in diff:
+                    err[i] = np.dot(diffn, np.dot(self.RM, diffn))
+            elif self.RM.shape == (self._N, self._L, self._L):
+                for diffn,RMn in zip(diff, self._RM):
+                    err += np.dot(diffn, np.dot(RMn, diffn))
+            else:
+                print("ERROR: RM is in an invalid shape.")
         else:
-            for diffn,RFn in zip(diff,self.RF):
-                err += np.dot(diffn, np.dot(RFn, diffn))
-        return err / (2.0 * self._D * (self._N-1))
+            err = self.RM * np.sum(diff * diff)
+
+        return err / (self._L * self._N)
+            
 
     ############################################################################
     # Discretization routines
     ############################################################################
-    def disc_impeuler(self, X, dt):
+    def disc_trapezoid(self, X):
         fn = self.f(X[:-1], self.t[:-1], self.P)
         fnp1 = self.f(X[1:], self.t[1:], self.P)
-        return (fn + fnp1) / 2.0
+        return self.dt * (fn + fnp1) / 2.0
 
 #    def disc_rk2(self, X, dt):
 #        Xn, tn = X[:-1], self.t[:-1]
@@ -153,19 +175,20 @@ class TwinExperiment:
 #        k2 = self.f(Xn + k1/2.0, tn + dt/2.0, self.P)
 #        return k2
 
-    def disc_rk4(self, X, dt):
-        Xn, tn = X[:-1], np.tile(self.t[:-1], (self._D,1)).T
+    def disc_rk4(self, X):
+        Xn = X[:-1]
+        tn = np.tile(self.t[:-1], (self._D,1)).T
         k1 = self.f(Xn, tn, self.P)
-        k2 = self.f(Xn + (dt*k1)/2.0, tn + dt/2.0, self.P)
-        k3 = self.f(Xn + (dt*k2)/2.0, tn + dt/2.0, self.P)
-        k4 = self.f(Xn + dt*k3, tn + dt, self.P)
-        return (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
+        k2 = self.f(Xn + (self.dt*k1)/2.0, tn + self.dt/2.0, self.P)
+        k3 = self.f(Xn + (self.dt*k2)/2.0, tn + self.dt/2.0, self.P)
+        k4 = self.f(Xn + self.dt*k3, tn + self.dt, self.P)
+        return self.dt * (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
 
     ############################################################################
     # Annealing functions
     ############################################################################
     def anneal_init(self, XP0, alpha, beta_array, RF0=None, bounds=None,
-                    init_to_data=True, method='L-BFGS', disc='impeuler'):
+                    init_to_data=True, method='L-BFGS', disc='trapezoid'):
         """
         Initialize the annealing procedure.
         """
@@ -253,7 +276,7 @@ class TwinExperiment:
         self._initialized = False
 
     def anneal(self, XP0, alpha, beta_array, RF0=None, bounds=None,
-               init_to_data=True, method='L-BFGS', disc='impeuler'):
+               init_to_data=True, method='L-BFGS', disc='trapezoid'):
         """
         Convenience function to carry out a full annealing run over all values
         of beta in beta_array.
@@ -312,7 +335,7 @@ class TwinExperiment:
         else:
             np.savetxt(savefile, savearray)
 
-    def save_action(self, savedir='', savefile=None, filetype='npy'):
+    def save_action(self, savedir='./', savefile=None, filetype='npy'):
         """
         Save action values over the annealing.
         """
@@ -340,6 +363,14 @@ class TwinExperiment:
             np.save(savefile, savearray)
         else:
             np.savetxt(savefile, savearray)
+
+    def save_action_errors(self, savefile):
+        """
+        Save the action, as well as the time series of errors (with and without
+        RM/RF included).
+        """
+        AR = self.A_array.reshape((self.Nbeta, 1))
+        
 
     def save_modelerr(self, savedir='', savefile=None, filetype='npy'):
         """
@@ -526,9 +557,9 @@ class TwinExperiment:
     @property
     def N(self):
         return self._N
-    @L.setter
+    @N.setter
     def N(self, N):
-        print("Can\'t set N independently. Reset t instead.")
+        print("Can\'t set N independently.  Automatically set with new data.")
 
     @property
     def NPest(self):
@@ -542,11 +573,11 @@ class TwinExperiment:
         return self._RF
     @RF.setter
     def RF(self, RF):
-        pass
+        print("Resetting RF manually not allowed.")
 
     @property
     def beta(self):
         return self._beta
     @beta.setter
     def beta(self, beta):
-        pass
+        print("Resetting beta manually not allowed.")

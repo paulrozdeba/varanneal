@@ -47,17 +47,34 @@ def l96_jac_ode(t, x, k):
 
 # twin experiment parameters
 #N = 301
-N = 30
-dt = 0.02
-t0 = 0.0
-tf = t0 + dt*(N-1)
-D = 20
+#N = 30
+#dt = 0.02
+#t0 = 0.0
+#tf = t0 + dt*(N-1)
+D = 5
 #Lidx = (0, 1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18, 19)
-Lidx = (0, 5, 10, 15)
+#Lidx = (0, 5, 10, 15)
+Lidx = [0, 1, 2, 3, 4]
 L = len(Lidx)
 
+# load observed data, and set initial path guess
+#data = np.load('l96_twindata_D20_L14_dt0p02.npy')[:N]
+data = np.load('l96_twindata.npy')
+times = data[:, 0]
+t0 = times[0]
+tf = times[-1]
+dt = times[1] - times[0]
+N = len(times)
+
+data = data[:, 1:]
+data = data[:, Lidx]
+Xinit = (20.0*np.random.rand(N*D) - 10.0).reshape((N,D))
+for i,l in enumerate(Lidx):
+    Xinit[:, l] = data[:, i]
+Xinit = Xinit.flatten()
+
 # time recording
-times = np.linspace(t0, tf, N)
+#times = np.linspace(t0, tf, N)
 
 # parameters
 P = (8.17*np.ones(D),)
@@ -102,27 +119,23 @@ Pidx = ()
 ################################################################################
 
 # RM, RF
-RM = np.resize(np.eye(L),(L,L))/(0.2**2)
-RF0 = 0.0001*np.resize(np.eye(D),(D,D)) * dt**2
-RF0_val = .0001 * dt**2
-
-# initial guess for the path
-#data = np.load('l96_twindata_D20_L14_dt0p02.npy')[:N]
-data = np.load('l96_twindata_D20_L4.npy')[:N]
-Xinit = (20.0*np.random.rand(N*D) - 10.0).reshape((N,D))
-for i,l in enumerate(Lidx):
-    Xinit[:,l] = data[:,i+1]
-Xinit = Xinit.flatten()
+#RM = np.resize(np.eye(L),(L,L))/(0.2**2)
+RM = 1.0 / (0.2**2)
+#RF0 = 0.0001*np.resize(np.eye(D),(D,D)) * dt**2
+#RF0_val = .0001 * dt**2
+#RF0 = 0.0001 * dt**2
+#RF0_val = .0001 * dt**2
+RF0 = 0.0001
 
 # set alpha and beta values
 alpha = 1.5
-beta_array = np.linspace(0.0, 70.0, 71)
+beta_array = np.linspace(0.0, 53.0, 54)
 
 # initialize a twin experiment
 #twin1 = pyanneal.TwinExperiment(l96, Lidx, RM, RF0, data_file='l96_twindata_D20_L14_dt0p02.npy',
 #                                P=P, Pidx=Pidx)
-twin1 = pyanneal.TwinExperiment(l96, Lidx, RM, RF0, Y=data[:,1:], t=data[:,0], P=P, Pidx=Pidx)
-twin1.anneal(Xinit, alpha, beta_array, method='L-BFGS', disc='impeuler')
+twin1 = pyanneal.TwinExperiment(l96, dt, D, Lidx, RM, RF0, Y=data, t=times, P=P, Pidx=Pidx)
+twin1.anneal(Xinit, alpha, beta_array, method='L-BFGS', disc='trapezoid')
 twin1.save_as_minAone(savedir='path/')
 
 if plotflag == True:
