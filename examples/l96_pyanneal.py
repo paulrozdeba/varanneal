@@ -54,12 +54,12 @@ def l96_jac_ode(t, x, k):
 D = 5
 #Lidx = (0, 1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18, 19)
 #Lidx = (0, 5, 10, 15)
-Lidx = [0, 1, 2, 3, 4]
+Lidx = [0, 2, 4]
 L = len(Lidx)
 
 # load observed data, and set initial path guess
 #data = np.load('l96_twindata_D20_L14_dt0p02.npy')[:N]
-data = np.load('l96_twindata.npy')
+data = np.load('sample_l96_D5_N300_sm0p1.npy')[-17:]
 times = data[:, 0]
 t0 = times[0]
 tf = times[-1]
@@ -77,9 +77,12 @@ Xinit = Xinit.flatten()
 #times = np.linspace(t0, tf, N)
 
 # parameters
-P = (8.17*np.ones(D),)
+#P = 8.17*np.ones(D)
+P = np.array([8.17])
 #P = (P,)
-Pidx = ()
+#Pidx = [0]
+Pidx = []
+#Xinit = np.append(Xinit, 6.0)
 
 ################################################################################
 # generate twin data
@@ -120,7 +123,7 @@ Pidx = ()
 
 # RM, RF
 #RM = np.resize(np.eye(L),(L,L))/(0.2**2)
-RM = 1.0 / (0.2**2)
+RM = 1.0 / (0.1**2)
 #RF0 = 0.0001*np.resize(np.eye(D),(D,D)) * dt**2
 #RF0_val = .0001 * dt**2
 #RF0 = 0.0001 * dt**2
@@ -129,13 +132,13 @@ RF0 = 0.0001
 
 # set alpha and beta values
 alpha = 1.5
-beta_array = np.linspace(0.0, 53.0, 54)
+beta_array = np.linspace(0.0, 160.0, 161)
 
 # initialize a twin experiment
 #twin1 = pyanneal.TwinExperiment(l96, Lidx, RM, RF0, data_file='l96_twindata_D20_L14_dt0p02.npy',
 #                                P=P, Pidx=Pidx)
 twin1 = pyanneal.TwinExperiment(l96, dt, D, Lidx, RM, RF0, Y=data, t=times, P=P, Pidx=Pidx)
-twin1.anneal(Xinit, alpha, beta_array, method='L-BFGS', disc='trapezoid')
+twin1.anneal(Xinit, alpha, beta_array, method='L-BFGS-B', disc='SimpsonHermite')
 twin1.save_as_minAone(savedir='path/')
 
 if plotflag == True:
