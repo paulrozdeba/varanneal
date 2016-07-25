@@ -80,26 +80,17 @@ class TwinExperiment:
             p = self.P
         else:
             x = np.reshape(XP[:-self.NPest], (self.N, self.D))
-            if isinstance(XP[0], adolc._adolc.adouble):
-                #self.P[self.Pidx] = np.array([XP[-self.NPest + i].val for i in range(self.NPest)])
-                p = []
-                j = self.NPest
-                for i in range(self.NP):
-                    if i in self.Pidx:
-                        p.append(XP[-j])
-                        j -= 1
-                    else:
-                        p.append(self.P[i])
-            else:
-                #self.P[self.Pidx] = XP[-self.NPest:]
-                #p = np.copy(self.P)
-                p = np.copy(XP[-self.NPest:])
+            p = []
+            j = self.NPest
+            for i in range(self.NP):
+                if i in self.Pidx:
+                    p.append(XP[-j])
+                    j -= 1
+                else:
+                    p.append(self.P[i])
 
         # evaluate the action
         me = self.me_gaussian(x, p)
-        #if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-        #    fe = self.fe_SimpsonHermite(x, p)
-        #else:
         fe = self.fe_gaussian(x, p)
         return me + fe
 
@@ -113,30 +104,19 @@ class TwinExperiment:
             p = self.P
         else:
             x = np.reshape(XP[:-self.NPest], (self.N, self.D))
-            if isinstance(XP[0], adolc._adolc.adouble):
-                #self.P[self.Pidx] = np.array([XP[-self.NPest + i].val for i in range(self.NPest)])
-                p = []
-                j = self.NPest
-                for i in range(self.NP):
-                    if i in self.Pidx:
-                        p.append(XP[-j])
-                        j -= 1
-                    else:
-                        p.append(self.P[i])
-            else:
-                #self.P[self.Pidx] = XP[-self.NPest:]
-                #p = np.copy(self.P)
-                p = np.copy(XP[-self.NPest:])
+            p = []
+            j = self.NPest
+            for i in range(self.NP):
+                if i in self.Pidx:
+                    p.append(XP[-j])
+                    j -= 1
+                else:
+                    p.append(self.P[i])
 
         # evaluate the vector-like terms of the action
         me_vec = np.sqrt(self.RM / (self.L * self.N)) \
                  * self.me_gaussian_TS_vec(x, p)
-
-        if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-            fe_vec = np.sqrt(self.RF / (self.D * (self.N - 1))) \
-                 * self.fe_SimpsonHermite_TS_vec(x, p)
-        else:
-            fe_vec = np.sqrt(self.RF / (self.D * (self.N - 1))) \
+        fe_vec = np.sqrt(self.RF / (self.D * (self.N - 1))) \
                  * self.fe_gaussian_TS_vec(x, p)
 
         return np.append(me_vec, fe_vec)
@@ -168,31 +148,6 @@ class TwinExperiment:
             diff = x[1:] - x[:-1] - self.disc(x, p)
 
         return diff
-
-    #def fe_SimpsonHermite_TS_vec(self, x, p):
-    #    """
-    #    Time series of model error vectors, NOT times RF.
-    #    """
-    #    if x.ndim == 1:
-    #        x = np.reshape(x, (self.N, self.D))
-    #    xn = x[:-2:2]
-    #    xmid = x[1:-1:2]
-    #    xnp1 = x[2::2]
-    #
-    #    tn = self.t[:-2:2]
-    #    tmid = self.t[1:-1:2]
-    #    tnp1 = self.t[2::2]
-    #
-    #    fn = self.f(xn, tn, p)
-    #    fmid = self.f(xmid, tmid, p)
-    #    fnp1 = self.f(xnp1, tnp1, p)
-    #
-    #    diff = np.empty((self.N - 1, self.D), dtype="object")
-    #
-    #    diff[:-1:2] = xnp1 - xn - (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
-    #    diff[1::2] = xmid - (xn + xnp1)/2.0 - (fn - fnp1) * (2.0*self.dt)/8.0
-    #
-    #    return diff
 
     # Time series of squared errors, times RM or RF.
     def me_gaussian_TS(self, x, p):
@@ -239,28 +194,6 @@ class TwinExperiment:
 
         return err
 
-    #def fe_SimpsonHermite_TS(self, x, p):
-    #    """
-    #    Time series of squared model errors, times RF.
-    #    """
-    #    diff = self.fe_SimpsonHermite_TS_vec(x, p)
-    #
-    #    if type(self.RF) == np.ndarray:
-    #        if self.RF.shape == (self.N - 1, self.D):
-    #            err = self.RF * diff * diff
-    #        elif self.RF.shape == (self.D, self.D):
-    #            for diffn in diff:
-    #                err[i] = np.dot(diff, self.RF, diff)
-    #        elif self.RF.shape == (self.N - 1, self.D, self.D):
-    #            for diffn,RFn in zip(diff, self.RF):
-    #                err[i] = np.dot(diffn, np.dot(RFn, diffn))
-    #        else:
-    #            print("ERROR: RF is in an invalid shape.")
-    #    else:
-    #        err = self.RF * diff * diff
-    #
-    #    return err
-
     # Gaussian action terms for matrix Rf and Rm
     def me_gaussian(self, x, p):
         """
@@ -275,13 +208,6 @@ class TwinExperiment:
         """
         err = self.fe_gaussian_TS(x, p)
         return np.sum(err) / (self.D * (self.N - 1))
-
-    #def fe_SimpsonHermite(self, x, p):
-    #    """
-    #    Simpson-Hermite model error.
-    #    """
-    #    err = self.fe_SimpsonHermite_TS(x, p)
-    #    return np.sum(err) / (self.D * (self.N - 1))
 
     ############################################################################
     # Discretization routines
@@ -434,14 +360,7 @@ class TwinExperiment:
         # store A_min and the minimizing path
         self.A_array[self.betaidx] = Amin
         self.me_array[self.betaidx] = self.me_gaussian(np.array(XPmin[:self.N*self.D]), self.P)
-        #if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-        #    self.fe_array[self.betaidx] \
-        #        = self.fe_SimpsonHermite(np.array(XPmin[:self.N*self.D]), self.P)
-        #else:
         self.fe_array[self.betaidx] = self.fe_gaussian(np.array(XPmin[:self.N*self.D]), self.P)
-        #if self.betaidx == 0:
-        #    self.minpaths[0] = np.array(XPmin)
-        #else:
         self.minpaths[self.betaidx] = np.array(XPmin)
 
         # increase RF
