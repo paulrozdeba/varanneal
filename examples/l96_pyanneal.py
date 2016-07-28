@@ -132,7 +132,7 @@ RF0 = 0.0001
 
 # set alpha and beta values
 alpha = 1.5
-beta_array = np.linspace(0.0, 160.0, 161)
+beta_array = np.linspace(0.0, 80.0, 81)
 
 # initialize a twin experiment
 #twin1 = pyanneal.TwinExperiment(l96, Lidx, RM, RF0, data_file='l96_twindata_D20_L14_dt0p02.npy',

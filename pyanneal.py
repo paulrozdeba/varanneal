@@ -31,12 +31,14 @@ class TwinExperiment:
         else:
             self.load_data(data_file)
 
+        #self.nstart = nstart  # first time index to use from data
+
         if N is None:
+            self.Y = self.Y[nstart:]
             self.N = self.Y.shape[0]
         else:
+            self.Y = self.Y[nstart:(nstart + N)]
             self.N = N
-
-        self.nstart = nstart  # first time index to use from data
 
         # load stim
         if stim_file is None:
@@ -213,17 +215,17 @@ class TwinExperiment:
     # Discretization routines
     ############################################################################
     def disc_trapezoid(self, x, p):
-        fn = self.f(x[:-1], self.t[:-1], p)
-        fnp1 = self.f(x[1:], self.t[1:], p)
+        fn = self.f(self.t[:-1], x[:-1], p)
+        fnp1 = self.f(self.t[1:], x[1:], p)
         return self.dt * (fn + fnp1) / 2.0
 
     def disc_rk4(self, x, p):
         xn = x[:-1]
         tn = np.tile(self.t[:-1], (self.D, 1)).T
-        k1 = self.f(xn, tn, p)
-        k2 = self.f(xn + k1*self.dt/2.0, tn + self.dt/2.0, p)
-        k3 = self.f(xn + k2*self.dt/2.0, tn + self.dt/2.0, p)
-        k4 = self.f(xn + k3*self.dt, tn + self.dt, p)
+        k1 = self.f(tn, xn, p)
+        k2 = self.f(tn + self.dt/2.0, xn + k1*self.dt/2.0, p)
+        k3 = self.f(tn + self.dt/2.0, xn + k2*self.dt/2.0, p)
+        k4 = self.f(tn + self.dt, xn + k3*self.dt, p)
         return self.dt * (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
 
     def disc_SimpsonHermite(self, x, p):
@@ -235,9 +237,9 @@ class TwinExperiment:
         tmid = self.t[1:-1:2]
         tnp1 = self.t[2::2]
 
-        fn = self.f(xn, tn, p)
-        fmid = self.f(xmid, tmid, p)
-        fnp1 = self.f(xnp1, tnp1, p)
+        fn = self.f(tn, xn, p)
+        fmid = self.f(tmid, xmid, p)
+        fnp1 = self.f(tnp1, xnp1, p)
 
         disc_vec = np.empty((self.N - 1, self.D), dtype="object")
         disc_vec[:-1:2] = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
@@ -410,43 +412,56 @@ class TwinExperiment:
         """
         Save minimizing paths (not including parameters).
         """
-        savearray = np.reshape(self.minpaths[:, :-self.NPest], (self.Nbeta, self.N, self.D))
-        
-        if filename.endswith('.npy'):
-            np.save(savefile, savearray)
+        if self.NPest == 0:
+            savearray = np.reshape(self.minpaths[:], (self.Nbeta, self.N, self.D))
         else:
-            np.savetxt(savefile, savearray)
+            savearray = np.reshape(self.minpaths[:, :-self.NPest], (self.Nbeta, self.N, self.D))
+
+        # append time
+        tsave = np.reshape(self.t, (self.N, 1))
+        tsave = np.resize(tsave, (self.Nbeta, self.N, 1))
+        savearray = np.dstack((tsave, savearray))
+
+        if filename.endswith('.npy'):
+            np.save(filename, savearray)
+        else:
+            np.savetxt(filename, savearray)
 
     def save_params(self, filename):
         """
         Save minimum action parameter values.
         """
+        if self.NPest == 0:
+            print("WARNING: You did not estimate any parameters.  Writing fixed " \
+                  + "parameter values to file anyway.")
+
         # write fixed parameters to array
         savearray = np.resize(self.P, (self.Nbeta, self.NP))
         # write estimated parameters to array
-        est_param_array = np.reshape(self.minpaths[:, -self.NPest:], (self.Nbeta, self.NPest))
-        savearray[:, self.Pidx] = est_param_array
+        if self.NPest > 0:
+            est_param_array = np.reshape(self.minpaths[:, -self.NPest:], (self.Nbeta, self.NPest))
+            savearray[:, self.Pidx] = est_param_array
 
         if filename.endswith('.npy'):
-            np.save(savefile, savearray)
+            np.save(filename, savearray)
         else:
-            np.savetxt(savefile, savearray)
+            np.savetxt(filename, savearray)
 
     def save_action_errors(self, filename):
         """
         Save beta values, action, and errors (with/without RM and RF) to file.
         """
         savearray = np.zeros((self.Nbeta, 5))
-        savearray[:, 0] = self.beta
+        savearray[:, 0] = self.beta_array
         savearray[:, 1] = self.A_array
         savearray[:, 2] = self.me_array
         savearray[:, 3] = self.fe_array
-        savearray[:, 5] = self.fe_array / (self.RF0 * self.alpha**self.beta)
+        savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
 
         if filename.endswith('.npy'):
-            np.save(savefile, savearray)
+            np.save(filename, savearray)
         else:
-            np.savetxt(savefile, savearray)
+            np.savetxt(filename, savearray)
 
     ############################################################################
     # AD and minimization functions
@@ -517,6 +532,7 @@ class TwinExperiment:
         adolc.dependent(af)
         adolc.trace_off()
         self.taped = True
+        print('Done!')
         print('Time = {0} s\n'.format(time.time()-tstart))
 
     def min_lbfgs(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
@@ -653,14 +669,16 @@ class TwinExperiment:
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
-        res = opt.minimize(self.A, XP0, method='L-BFGS-B', jac=self.scipy_A_grad)
+        res = opt.minimize(self.A, XP0, method='L-BFGS-B', jac=self.scipy_A_grad,
+                           options={'gtol':1.0e-10, 'ftol':1.0e-10})
         XPmin,status,Amin = res.x, res.status, res.fun
 
-        print('Optimization complete!')
-        print('Time = {0} s'.format(time.time()-tstart))
-        print('Exit flag = {0}'.format(status))
-        print('Iterations = {0}'.format(res.nit))
-        print('Obj. function value = {0}\n'.format(Amin))
+        print("Optimization complete!")
+        print("Time = {0} s".format(time.time()-tstart))
+        print("Exit flag = {0}".format(status))
+        print("Exit message: {0}".format(res.message))
+        print("Iterations = {0}".format(res.nit))
+        print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
     ############################################################################
