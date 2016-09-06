@@ -51,6 +51,9 @@ class TwinExperiment:
         self.taped = False
         self.initalized = False
 
+        # arguments for optimization routine
+        self.opt_args = None
+
     def load_data(self, data_file):
         """
         Load twin experiment data from file. If a text file, must be in
@@ -670,7 +673,8 @@ class TwinExperiment:
         print("Beginning optimization...")
         tstart = time.time()
         res = opt.minimize(self.A, XP0, method='L-BFGS-B', jac=self.scipy_A_grad,
-                           options={'gtol':1.0e-10, 'ftol':1.0e-10})
+                           options=self.opt_args)
+                           #options={'gtol':1.0e-10, 'ftol':1.0e-10})
         XPmin,status,Amin = res.x, res.status, res.fun
 
         print("Optimization complete!")
