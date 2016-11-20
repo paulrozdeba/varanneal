@@ -3,9 +3,13 @@ Carry out path space annealing.
 """
 
 import numpy as np
-import xalglib, adolc
+import adolc
 import time
 import scipy.optimize as opt
+try:
+    import xalglib
+except:
+    pass
 
 class TwinExperiment:
     def __init__(self, f, dt, D, Lidx, RM, RF0,
@@ -517,6 +521,9 @@ class TwinExperiment:
 
     def scipy_A_grad(self, XP):
         return adolc.gradient(self.adolcID, XP)
+
+    def hessian_eval(self, XP):
+        return adolc.hessian(self.adolcID, XP)
 
     def tape_A(self):
         """
