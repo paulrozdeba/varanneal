@@ -15,7 +15,7 @@ Lidx = [0, 2, 4]
 L = len(Lidx)
 
 # load observed data, and set initial path guess
-data = np.load('../sample_l96_D5_N300_sm0p1.npy')[:-1]
+data = np.load('sample_l96_D5_N201_sm0p1.npy')
 times = data[:, 0]
 t0 = times[0]
 tf = times[-1]
@@ -35,7 +35,8 @@ P = np.array([8.17])
 #P = (P,)
 Pidx = [0]
 #Pidx = []
-Xinit = np.append(Xinit, 2.0)
+Pinit = 4.0 * np.random.rand() + 6.0
+Xinit = np.append(Xinit, Pinit)
 
 # RM, RF
 #RM = np.resize(np.eye(L),(L,L))/(0.2**2)
@@ -53,8 +54,9 @@ beta_array = np.linspace(0.0, 72.0, 73)
 # initialize a twin experiment
 twin1 = pyanneal.TwinExperiment(l96, dt, D, Lidx, RM, RF0, Y=data, t=times, P=P, Pidx=Pidx)
 # run the annealing
+twin1.opt_args = {'gtol':1.0e-12, 'ftol':1.0e-12, 'maxfun':1000000, 'maxiter':1000000}
 twin1.anneal(Xinit, alpha, beta_array, method='L-BFGS-B', disc='SimpsonHermite')
 
-twin1.save_paths("paths_mem0.npy")
-twin1.save_params("params_mem0.npy")
-twin1.save_action_errors("action_errors_mem0.npy")
+twin1.save_paths("paths.npy")
+twin1.save_params("params.npy")
+twin1.save_action_errors("action_errors.npy")
