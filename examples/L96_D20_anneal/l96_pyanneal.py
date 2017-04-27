@@ -4,6 +4,12 @@
 
 import numpy as np
 import pyanneal
+import sys
+
+try:
+    TASKID = int(sys.argv[1])
+except:
+    TASKID = 0
 
 # define the vector field
 def l96(t, x, k):
@@ -52,7 +58,7 @@ alpha = 1.5
 beta_array = np.linspace(0.0, 100.0, 101)
 
 # initialize a twin experiment
-twin1 = pyanneal.TwinExperiment(l96, dt, D, Lidx, RM, RF0, Y=data, t=times, P=P, Pidx=Pidx)
+twin1 = pyanneal.TwinExperiment(l96, dt, D, Lidx, RM, RF0, Y=data, t=times, P=P, Pidx=Pidx, adolcID=TASKID)
 # run the annealing
 twin1.opt_args = {'gtol':1.0e-12, 'ftol':1.0e-12, 'maxfun':1000000, 'maxiter':1000000}
 twin1.anneal(Xinit, alpha, beta_array, method='L-BFGS-B', disc='SimpsonHermite')

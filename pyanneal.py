@@ -70,12 +70,17 @@ class TwinExperiment:
             data = np.load(data_file)
         else:
             data = np.loadtxt(data_file)
-        self.Y = data[:,1:]
+        self.Y = data[:, 1:]
 
-    #def load_stim(self, stim_file):
-    #    """
-    #    Load stimulus for experimental data from file.
-    #    """
+    def load_stim(self, stim_file):
+        """
+        Load stimulus for experimental data from file.
+        """
+        if stim_file.endswith('npy'):
+            s = np.load(stim_file)
+        else:
+            s = np.loadtxt(stim_file)
+        self.stim = s[:, 1:]
 
     ############################################################################
     # Gaussian action
@@ -97,6 +102,9 @@ class TwinExperiment:
                     j -= 1
                 else:
                     p.append(self.P[i])
+
+        if self.stim is not None:
+            p = (p, self.stim)
 
         # evaluate the action
         me = self.me_gaussian(x, p)
@@ -150,7 +158,8 @@ class TwinExperiment:
 
         if self.disc.im_func.__name__ == "disc_SimpsonHermite":
             disc_vec = self.disc(x, p)
-            diff = np.zeros((self.N - 1, self.D), dtype="object")
+            #diff = np.zeros((self.N - 1, self.D), dtype="object")
+            diff = np.zeros((self.N - 1, self.D), dtype=x.dtype)
             diff[:-1:2] = x[2::2] - x[:-2:2] - disc_vec[:-1:2]
             diff[1::2] = x[1::2] - disc_vec[1::2]
         else:
@@ -248,7 +257,8 @@ class TwinExperiment:
         fmid = self.f(tmid, xmid, p)
         fnp1 = self.f(tnp1, xnp1, p)
 
-        disc_vec = np.empty((self.N - 1, self.D), dtype="object")
+        #disc_vec = np.empty((self.N - 1, self.D), dtype="object")
+        disc_vec = np.empty((self.N - 1, self.D), dtype=x.dtype)
         disc_vec[:-1:2] = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
         disc_vec[1::2] = (xn + xnp1)/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
 
@@ -312,6 +322,9 @@ class TwinExperiment:
 
         # array to store optimization exit flags
         self.exitflags = np.empty(self.Nbeta, dtype='int')
+
+    def set_disc(self, disc):
+        exec 'self.disc = self.disc_%s'%(disc,)
 
     def anneal_step(self):
         """
@@ -672,6 +685,10 @@ class TwinExperiment:
 
     def min_lbfgs_scipy(self, XP0):
         """
+        Minimize f starting from x0 using L-BFGS-B method in scipy.
+        This method supports the use of bounds.
+        Returns the minimizing state, the minimum function value, and the L-BFGS
+        termination information.
         """
         if self.taped == False:
             self.tape_A()
@@ -681,7 +698,6 @@ class TwinExperiment:
         tstart = time.time()
         res = opt.minimize(self.A, XP0, method='L-BFGS-B', jac=self.scipy_A_grad,
                            options=self.opt_args)
-                           #options={'gtol':1.0e-10, 'ftol':1.0e-10})
         XPmin,status,Amin = res.x, res.status, res.fun
 
         print("Optimization complete!")
