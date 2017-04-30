@@ -35,20 +35,24 @@ class TwinExperiment:
         else:
             self.load_data(data_file)
 
-        #self.nstart = nstart  # first time index to use from data
-
-        if N is None:
-            self.Y = self.Y[nstart:]
-            self.N = self.Y.shape[0]
-        else:
-            self.Y = self.Y[nstart:(nstart + N)]
-            self.N = N
-
         # load stim
         if stim_file is None:
             self.stim = stim
         else:
             self.load_stim(stim_file)
+
+        #self.nstart = nstart  # first time index to use from data
+
+        if N is None:
+            self.Y = self.Y[nstart:]
+            self.N = self.Y.shape[0]
+            if self.stim is not None:
+                self.stim = self.stim[nstart:]
+        else:
+            self.Y = self.Y[nstart:(nstart + N)]
+            self.N = N
+            if self.stim is not None:
+                self.stim = self.stim[nstart:(nstart + N)]
 
         # other stuff
         self.A = self.A_gaussian
@@ -96,15 +100,17 @@ class TwinExperiment:
             x = np.reshape(XP[:-self.NPest], (self.N, self.D))
             p = []
             j = self.NPest
-            for i in range(self.NP):
+            for i in xrange(self.NP):
                 if i in self.Pidx:
                     p.append(XP[-j])
                     j -= 1
                 else:
                     p.append(self.P[i])
 
-        if self.stim is not None:
-            p = (p, self.stim)
+        # Traded the statements below in favor of calling self.stim directly in
+        # the discretization functions.
+        #if self.stim is not None:
+        #    p = (p, self.stim)
 
         # evaluate the action
         me = self.me_gaussian(x, p)
@@ -123,7 +129,7 @@ class TwinExperiment:
             x = np.reshape(XP[:-self.NPest], (self.N, self.D))
             p = []
             j = self.NPest
-            for i in range(self.NP):
+            for i in xrange(self.NP):
                 if i in self.Pidx:
                     p.append(XP[-j])
                     j -= 1
@@ -197,16 +203,27 @@ class TwinExperiment:
         diff = self.fe_gaussian_TS_vec(x, p)
 
         if type(self.RF) == np.ndarray:
-            if self.RF.shape == (self.N - 1, self.D):
+            if self.RF.shape == (self.D,):
+                err = np.zeros(self.N - 1, dtype=diff.dtype)
+                for i in xrange(self.N - 1):
+                    err[i] = np.sum(self.RF * diff[i] * diff[i])
+
+            elif self.RF.shape == (self.N - 1, self.D):
                 err = self.RF * diff * diff
+
             elif self.RF.shape == (self.D, self.D):
-                for diffn in diff:
-                    err[i] = np.dot(diff, self.RF, diff)
+                err = np.zeros(self.N - 1, dtype=diff.dtype)
+                for i in xrange(self.N - 1):
+                    err[i] = np.dot(diff[i], np.dot(self.RF, diff[i]))
+
             elif self.RF.shape == (self.N - 1, self.D, self.D):
-                for diffn,RFn in zip(diff, self.RF):
-                    err[i] = np.dot(diffn, np.dot(RFn, diffn))
+                err = np.zeros(self.N - 1, dtype=diff.dtype)
+                for i in xrange(self.N - 1):
+                    err[i] = np.dot(diff[i], np.dot(RF[i], diff[i]))
+
             else:
                 print("ERROR: RF is in an invalid shape.")
+
         else:
             err = self.RF * diff * diff
 
@@ -231,8 +248,18 @@ class TwinExperiment:
     # Discretization routines
     ############################################################################
     def disc_trapezoid(self, x, p):
-        fn = self.f(self.t[:-1], x[:-1], p)
-        fnp1 = self.f(self.t[1:], x[1:], p)
+        if self.stim is not None:
+            sn = self.stim[:-1]
+            snp1 = self.stim[1:]
+            pn = (p, sn)
+            pnp1 = (p, snp1)
+        else:
+            pn = p
+            pnp1 = p
+
+        fn = self.f(self.t[:-1], x[:-1], pn)
+        fnp1 = self.f(self.t[1:], x[1:], pnp1)
+
         return self.dt * (fn + fnp1) / 2.0
 
     def disc_rk4(self, x, p):
@@ -245,6 +272,18 @@ class TwinExperiment:
         return self.dt * (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
 
     def disc_SimpsonHermite(self, x, p):
+        if self.stim is not None:
+            sn = self.stim[:-2:2]
+            smid = self.stim[1:-1:2]
+            snp1 = self.stim[2::2]
+            pn = (p, sn)
+            pmid = (p, smid)
+            pnp1 = (p, snp1)
+        else:
+            pn = p
+            pmid = p
+            pnp1 = p
+
         xn = x[:-2:2]
         xmid = x[1:-1:2]
         xnp1 = x[2::2]
@@ -253,9 +292,9 @@ class TwinExperiment:
         tmid = self.t[1:-1:2]
         tnp1 = self.t[2::2]
 
-        fn = self.f(tn, xn, p)
-        fmid = self.f(tmid, xmid, p)
-        fnp1 = self.f(tnp1, xnp1, p)
+        fn = self.f(tn, xn, pn)
+        fmid = self.f(tmid, xmid, pmid)
+        fnp1 = self.f(tnp1, xnp1, pnp1)
 
         #disc_vec = np.empty((self.N - 1, self.D), dtype="object")
         disc_vec = np.empty((self.N - 1, self.D), dtype=x.dtype)
@@ -375,7 +414,7 @@ class TwinExperiment:
         # update optimal parameter values
         if self.NPest > 0:
             if isinstance(XPmin[0], adolc._adolc.adouble):
-                self.P[self.Pidx] = np.array([XPmin[-self.NPest + i].val for i in range(self.NPest)])
+                self.P[self.Pidx] = np.array([XPmin[-self.NPest + i].val for i in xrange(self.NPest)])
             else:
                 self.P[self.Pidx] = np.copy(XPmin[-self.NPest:])
 
