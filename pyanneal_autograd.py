@@ -2,7 +2,7 @@
 Carry out path space annealing.
 """
 
-import numpy as np
+#import numpy as np
 #import autograd.numpy as agnp
 import autograd.numpy as np
 import autograd as ag
@@ -24,7 +24,6 @@ class TwinExperiment:
         self.L = len(Lidx)
         self.RM = RM
         self.RF0 = RF0
-        self.t = t
         self.P = P
         self.Pidx = Pidx
         self.NP = len(P)
@@ -46,18 +45,21 @@ class TwinExperiment:
         #self.nstart = nstart  # first time index to use from data
 
         if N is None:
+            self.t = t[nstart:]
             self.Y = self.Y[nstart:]
             self.N = self.Y.shape[0]
             if self.stim is not None:
                 self.stim = self.stim[nstart:]
         else:
+            self.t = t[nstart:(nstart + N)]
             self.Y = self.Y[nstart:(nstart + N)]
             self.N = N
             if self.stim is not None:
                 self.stim = self.stim[nstart:(nstart + N)]
 
         # other stuff
-        self.A = self.A_gaussian
+        #self.A = self.A_gaussian
+        self.A = self.A_gaussian_direct
         self.taped = False
         self.initalized = False
 
@@ -98,6 +100,9 @@ class TwinExperiment:
         if self.NPest == 0:
             x = np.reshape(XP, (self.N, self.D))
             p = self.P
+        elif self.NPest == self.NP:
+            x = np.reshape(XP, (self.N, self.D))
+            p = XP[-self.NP:]
         else:
             x = np.reshape(XP[:-self.NPest], (self.N, self.D))
             p = []
@@ -142,14 +147,20 @@ class TwinExperiment:
         diff = self.me_gaussian_TS_vec(x, p)
 
         if type(self.RM) == np.ndarray:
+            # Contract RM with error
             if self.RM.shape == (self.N, self.L):
                 err = self.RM * diff * diff
-            elif self.RM.shape == (self.L, self.L):
-                for diffn in diff:
-                    err[i] = np.dot(diffn, np.dot(self.RM, diffn))
+
+            #elif self.RM.shape == (self.L, self.L):
+            #    #for diffn in diff:
+            #    #    err[i] = np.dot(diffn, np.dot(self.RM, diffn))
+            #    err = np.einsum('...i,...ij,...j', diff, self.RM, diff)
+
             elif self.RM.shape == (self.N, self.L, self.L):
-                for diffn,RMn in zip(diff, self._RM):
-                    err[i] = np.dot(diffn, np.dot(RMn, diffn))
+                #for diffn,RMn in zip(diff, self._RM):
+                #    err[i] = np.dot(diffn, np.dot(RMn, diffn))
+                err = np.einsum('...i,...ij,...j', diff, self.RM, diff)
+
             else:
                 print("ERROR: RM is in an invalid shape.")
         else:
@@ -246,6 +257,98 @@ class TwinExperiment:
 
         return np.append(me_vec, fe_vec)
 
+    def A_gaussian_direct(self, XP):
+        """
+        Calculate the Gaussian action all in one go.
+        """
+        # Extract state and parameters from XP
+        if self.NPest == 0:
+            x = np.reshape(XP, (self.N, self.D))
+            p = self.P
+        elif self.NPest == self.NP:
+            x = np.reshape(XP[:-self.NP], (self.N, self.D))
+            p = XP[-self.NP:]
+        else:
+            x = np.reshape(XP[:-self.NPest], (self.N, self.D))
+            p = []
+            j = self.NPest
+            for i in xrange(self.NP):
+                if i in self.Pidx:
+                    p.append(XP[-j])
+                    j -= 1
+                else:
+                    p.append(self.P[i])
+
+        # Measurement error
+        #if x.ndim == 1:
+        #    x = np.reshape(x, (self.N, self.D))
+        diff = x[:, self.Lidx] - self.Y
+
+        if type(self.RM) == np.ndarray:
+            # Contract RM with error
+            if self.RM.shape == (self.N, self.L):
+                merr = np.einsum('ij,ij,ij', diff, self.RM, diff)
+            elif self.RM.shape == (self.N, self.L, self.L):
+                merr = np.einsum('ij,ijk,ik', diff, self.RM, diff)
+            else:
+                print("ERROR: RM is in an invalid shape.")
+        else:
+            #merr = self.RM * np.einsum('ij,ij', diff, diff)
+            merr = self.RM * np.sum(diff * diff)
+
+        # Model error
+        #if x.ndim == 1:
+        #    x = np.reshape(x, (self.N, self.D))
+
+        if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+            disc_vec1, disc_vec2 = self.disc(x, p)
+            #diff = np.zeros((self.N - 1, self.D), dtype="object")
+            #diff = np.zeros((self.N - 1, self.D), dtype=x.dtype)
+            #diff[:-1:2] = x[2::2] - x[:-2:2] - disc_vec[:-1:2]
+            #diff[1::2] = x[1::2] - disc_vec[1::2]
+            #diff1 = x[2::2] - x[:-2:2] - disc_vec[:-1:2]
+            #diff2 = x[1::2] - disc_vec[1::2]
+            diff1 = x[2::2] - x[:-2:2] - disc_vec1
+            diff2 = x[1::2] - disc_vec2
+        else:
+            diff = x[1:] - x[:-1] - self.disc(x, p)
+
+        if type(self.RF) == np.ndarray:
+            # Contract RF with the model error time series terms
+            if self.RF.shape == (self.N - 1, self.D):
+                if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+                    ferr1 = np.einsum('ij,ij,ij', diff1, self.RF[::2], diff1)
+                    ferr2 = np.einsum('ij,ij,ij', diff2, self.RF[1::2], diff2)
+                    ferr = ferr1 + ferr2
+                else:
+                    ferr = np.einsum('ij,ij,ij', diff, self.RF, diff)
+
+            #elif self.RF.shape == (self.D, self.D):
+            #    err = np.zeros(self.N - 1, dtype=diff.dtype)
+            #    for i in xrange(self.N - 1):
+            #        err[i] = np.dot(diff[i], np.dot(self.RF, diff[i]))
+
+            elif self.RF.shape == (self.N - 1, self.D, self.D):
+                if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+                    ferr1 = np.einsum('ij,ijk,ik', diff1, self.RF[::2], diff1)
+                    ferr2 = np.einsum('ij,ijk,ik', diff2, self.RF[1::2], diff2)
+                    ferr = ferr1 + ferr2
+                else:
+                    ferr = np.einsum('ij,ijk,jk', diff, self.RF, diff)
+
+            else:
+                print("ERROR: RF is in an invalid shape.")
+
+        else:
+            if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+                ferr1 = self.RF * np.einsum('ij,ij', diff1, diff1)
+                ferr2 = self.RF * np.einsum('ij,ij', diff2, diff2)
+                ferr = ferr1 + ferr2
+            else:
+                ferr = self.RF * np.einsum('ij,ij', diff, diff)
+
+        return merr/(self.L*self.N) + ferr/(self.D*(self.N-1))
+
     ############################################################################
     # Discretization routines
     ############################################################################
@@ -303,17 +406,21 @@ class TwinExperiment:
         fnp1 = self.f(self.t[2::2], x[2::2], pnp1)
 
         #disc_vec = np.zeros((self.N - 1, self.D), dtype="object")
-        disc_vec = np.zeros((self.N - 1, self.D), dtype=x.dtype)
-        disc_vec[:-1:2] = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
-        disc_vec[1::2] = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
+        #disc_vec = np.zeros((self.N - 1, self.D), dtype=x.dtype)
+        #disc_vec[:-1:2] = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
+        #disc_vec[1::2] = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
+        disc_vec1 = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
+        disc_vec2 = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
+        # This next line interleaves the two disc_vec arrays in a very fancy way
+        #disc_vec = np.reshape(np.hstack((disc_vec1, disc_vec2)), (self.N-1, self.D))
 
-        return disc_vec
+        return disc_vec1, disc_vec2
 
     ############################################################################
     # Annealing functions
     ############################################################################
     def anneal_init(self, XP0, alpha, beta_array, RF0=None, bounds=None,
-                    init_to_data=True, method='L-BFGS', disc='trapezoid'):
+                    init_to_data=False, method='L-BFGS', disc='trapezoid'):
         """
         Initialize the annealing procedure.
         """
@@ -341,6 +448,7 @@ class TwinExperiment:
                 XP0 = np.append(X0r.flatten(), P0)
             else:
                 XP0 = X0r.flatten()
+        print XP0.shape
         self.minpaths[0] = XP0
 
         # set current RF
@@ -521,12 +629,24 @@ class TwinExperiment:
         savearray[:, 1] = self.A_array
         savearray[:, 2] = self.me_array
         savearray[:, 3] = self.fe_array
-        savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
 
-        if filename.endswith('.npy'):
-            np.save(filename, savearray)
+        # Save model error / RF
+        if type(self.RF) == np.ndarray:
+            if self.RF0.shape == (self.D,):
+                savearray[:, 4] = self.fe_array / (self.RF0[cmpt] * self.alpha**self.beta_array)
+                if filename.endswith('.npy'):
+                    np.save(filename, savearray)
+                else:
+                    np.savetxt(filename, savearray)
+            else:
+                print("RF shape currently not supported for saving.")
+
         else:
-            np.savetxt(filename, savearray)
+            savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
+            if filename.endswith('.npy'):
+                np.save(filename, savearray)
+            else:
+                np.savetxt(filename, savearray)
 
     ############################################################################
     # AD and minimization functions
@@ -577,24 +697,25 @@ class TwinExperiment:
     #    hess_A[:] = adolc.hessian(self.adolcID, XP).tolist()
     #    return adolc.function(self.adolcID, XP)
     #
-    def init_gradA(self):
+
+    def init_gradA_ag(self):
         """
         Initialize the gradient of the action.
         """
         print("Initializing AD gradient evaluation...")
         tstart = time.time()
-        self.gradA = ag.grad(self.A)
+        self.gradA_ag = ag.grad(self.A)
         self.taped = True
         print("Done!")
         print("Time = %f s\n"%(time.time() - tstart,))
     
-    def init_objgradA(self):
+    def init_objgradA_ag(self):
         """
         Initialize the objective-and-gradient function.
         """
         print("Initializing AD objective-and-gradient evaluation...")
         tstart = time.time()
-        self.objgradA = ag.value_and_grad(self.A)
+        self.objgradA_ag = ag.value_and_grad(self.A)
         self.taped = True
         print("Done!")
         print("Time = %f s\n"%(time.time() - tstart,))
@@ -739,15 +860,15 @@ class TwinExperiment:
         """
         if self.taped == False:
             if self.use_objgradA:
-                self.init_objgradA()
+                self.init_objgradA_ag()
             else:
-                self.init_gradA()
+                self.init_gradA_ag()
 
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
         if self.use_objgradA:
-            res = opt.minimize(self.objgradA, XP0, method='L-BFGS-B', jac=True,
+            res = opt.minimize(self.objgradA_ag, XP0, method='L-BFGS-B', jac=True,
                                options=self.opt_args)
         else:
             res = opt.minimize(self.A, XP0, method='L-BFGS-B', jac=self.gradA,

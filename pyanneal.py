@@ -42,26 +42,50 @@ class TwinExperiment:
 
         #self.nstart = nstart  # first time index to use from data
 
+        # extract data from nstart to nstart + N
         if N is None:
-            self.t = t[nstart:]
-            self.Y = self.Y[nstart:]
             self.N = self.Y.shape[0]
-            if self.stim is not None:
-                self.stim = self.stim[nstart:]
         else:
-            self.t = t[nstart:(nstart + N)]
-            self.Y = self.Y[nstart:(nstart + N)]
             self.N = N
-            if self.stim is not None:
-                self.stim = self.stim[nstart:(nstart + N)]
+
+        self.t = t[nstart:(nstart + N)]
+        self.Y = self.Y[nstart:(nstart + N)]
+        if self.stim is not None:
+            self.stim = self.stim[nstart:(nstart + N)]
+
+        # Reshape RM and RF so that they span the whole time series.  This is
+        # done because in the action evaluation, it is more efficient to let
+        # numpy handle multiplication over time rather than using python loops.
+        if type(self.RM) == np.ndarray:
+            if self.RM.shape == (self.L,):
+                self.RM = np.resize(self.RM, (self.N, self.L))
+            elif self.RM.shape == (self.L, self.L):
+                self.RM = np.resize(self.RM, (self.N, self.L, self.L))
+            elif self.RM.shape == (self.N, self.L) or \
+                 self.RM.shape == (self.N, self.L, self.L):
+                pass
+            else:
+                print("ERROR: RM has an invalid shape. Exiting.")
+                exit(1)
+
+        if type(self.RF0) == np.ndarray:
+            if self.RF0.shape == (self.D,):
+                self.RF0 = np.resize(self.RF0, (self.N - 1, self.D))
+            elif self.RF0.shape == (self.D, self.D):
+                self.RF0 = np.resize(self.RF0, (self.N - 1, self.D, self.D))
+            elif self.RF0.shape == (self.N - 1, self.D) or \
+                 self.RF0.shape == (self.N - 1, self.D, self.D):
+                pass
+            else:
+                print("ERROR: RF0 has an invalid shape. Exiting.")
+                exit(1)
 
         # other stuff
-        self.A = self.A_gaussian
         self.taped = False
         self.initalized = False
 
         # arguments for optimization routine
-        self.opt_args = None
+        #self.opt_args = None
 
     def load_data(self, data_file):
         """
@@ -90,13 +114,16 @@ class TwinExperiment:
     ############################################################################
     # Gaussian action
     ############################################################################
-    def A_gaussian(self, XP):
+    def A_gaussian_pieced(self, XP):
         """
         Gaussian action.
-        """
+        """        
         if self.NPest == 0:
             x = np.reshape(XP, (self.N, self.D))
             p = self.P
+        elif self.NP == self.NPest:
+            x = np.reshape(XP[:-self.NP], (self.N, self.D))
+            p = XP[-self.NP:]
         else:
             x = np.reshape(XP[:-self.NPest], (self.N, self.D))
             p = []
@@ -107,11 +134,6 @@ class TwinExperiment:
                     j -= 1
                 else:
                     p.append(self.P[i])
-
-        # Traded the statements below in favor of calling self.stim directly in
-        # the discretization functions.
-        #if self.stim is not None:
-        #    p = (p, self.stim)
 
         # evaluate the action
         me = self.me_gaussian(x, p)
@@ -245,15 +267,96 @@ class TwinExperiment:
 
         return np.append(me_vec, fe_vec)
 
+    def A_gaussian(self, XP):
+        """
+        Calculate the Gaussian action all in one go.
+        """
+        # Extract state and parameters from XP
+        if self.NPest == 0:
+            x = np.reshape(XP, (self.N, self.D))
+            p = self.P
+        elif self.NPest == self.NP:
+            x = np.reshape(XP[:-self.NP], (self.N, self.D))
+            p = XP[-self.NP:]
+        else:
+            x = np.reshape(XP[:-self.NPest], (self.N, self.D))
+            p = []
+            j = self.NPest
+            for i in xrange(self.NP):
+                if i in self.Pidx:
+                    p.append(XP[-j])
+                    j -= 1
+                else:
+                    p.append(self.P[i])
+
+        # Measurement error
+        diff = x[:, self.Lidx] - self.Y
+
+        if type(self.RM) == np.ndarray:
+            # Contract RM with error
+            if self.RM.shape == (self.N, self.L):
+                merr = np.sum(self.RM * diff * diff)
+            elif self.RM.shape == (self.N, self.L, self.L):
+                merr = 0.0
+                for i in xrange(self.N):
+                    merr = merr + np.dot(diff[i], np.dot(self.RM[i], diff[i]))
+            else:
+                print("ERROR: RM is in an invalid shape.")
+        else:
+            merr = self.RM * np.sum(diff * diff)
+
+        # Model error
+        if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+            #disc_vec = self.disc(x, p)
+            disc_vec1, disc_vec2 = self.disc(x, p)
+            diff1 = x[2::2] - x[:-2:2] - disc_vec1
+            diff2 = x[1::2] - disc_vec2
+        else:
+            diff = x[1:] - x[:-1] - self.disc(x, p)
+
+        if type(self.RF) == np.ndarray:
+            # Contract RF with the model error time series terms
+            if self.RF.shape == (self.N - 1, self.D):
+                if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+                    ferr1 = np.sum(self.RF[::2] * diff1 * diff1)
+                    ferr2 = np.sum(self.RF[1::2] * diff2 * diff2)
+                    ferr = ferr1 + ferr2
+                else:
+                    ferr = np.sum(self.RF * diff * diff)
+
+            elif self.RF.shape == (self.N - 1, self.D, self.D):
+                if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+                    ferr1 = 0.0
+                    ferr2 = 0.0
+                    for i in xrange((self.N - 1) / 2):
+                        ferr1 = ferr1 + np.dot(diff1[i], np.dot(self.RF[2*i], diff1[i]))
+                        ferr2 = ferr2 + np.dot(diff2[i], np.dot(self.RF[2*i+1], diff2[i]))
+                    ferr = ferr1 + ferr2
+                else:
+                    ferr = 0.0
+                    for i in xrange(self.N - 1):
+                        ferr = ferr + np.dot(diff[i], np.dot(self.RF[i], diff))
+
+            else:
+                print("ERROR: RF is in an invalid shape.")
+
+        else:
+            if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+                ferr1 = self.RF * np.sum(diff1 * diff1)
+                ferr2 = self.RF * np.sum(diff2 * diff2)
+                ferr = ferr1 + ferr2
+            else:
+                ferr = self.RF * np.sum(diff * diff)
+
+        return merr/(self.L*self.N) + ferr/(self.D*(self.N-1))
+
     ############################################################################
     # Discretization routines
     ############################################################################
     def disc_trapezoid(self, x, p):
         if self.stim is not None:
-            sn = self.stim[:-1]
-            snp1 = self.stim[1:]
-            pn = (p, sn)
-            pnp1 = (p, snp1)
+            pn = (p, self.stim[:-1])
+            pnp1 = (p, self.stim[1:])
         else:
             pn = p
             pnp1 = p
@@ -274,9 +377,6 @@ class TwinExperiment:
 
     def disc_SimpsonHermite(self, x, p):
         if self.stim is not None:
-            #sn = self.stim[:-2:2]
-            #smid = self.stim[1:-1:2]
-            #snp1 = self.stim[2::2]
             pn = (p, self.stim[:-2:2])
             pmid = (p, self.stim[1:-1:2])
             pnp1 = (p, self.stim[2::2])
@@ -285,45 +385,48 @@ class TwinExperiment:
             pmid = p
             pnp1 = p
 
-        #xn = x[:-2:2]
-        #xmid = x[1:-1:2]
-        #xnp1 = x[2::2]
-        #
-        #tn = self.t[:-2:2]
-        #tmid = self.t[1:-1:2]
-        #tnp1 = self.t[2::2]
-
-        #fn = self.f(tn, xn, pn)
-        #fmid = self.f(tmid, xmid, pmid)
-        #fnp1 = self.f(tnp1, xnp1, pnp1)
-
         fn = self.f(self.t[:-2:2], x[:-2:2], pn)
         fmid = self.f(self.t[1:-1:2], x[1:-1:2], pmid)
         fnp1 = self.f(self.t[2::2], x[2::2], pnp1)
 
         #disc_vec = np.zeros((self.N - 1, self.D), dtype="object")
-        disc_vec = np.zeros((self.N - 1, self.D), dtype=x.dtype)
-        disc_vec[:-1:2] = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
-        disc_vec[1::2] = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
+        #disc_vec = np.zeros((self.N - 1, self.D), dtype=x.dtype)
+        #disc_vec[:-1:2] = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
+        #disc_vec[1::2] = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
+        disc_vec1 = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
+        disc_vec2 = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
 
-        return disc_vec
+        return disc_vec1, disc_vec2
 
     ############################################################################
     # Annealing functions
     ############################################################################
     def anneal_init(self, XP0, alpha, beta_array, RF0=None, bounds=None,
-                    init_to_data=True, method='L-BFGS', disc='trapezoid'):
+                    init_to_data=True, method='L-BFGS', disc='trapezoid',
+                    action='A_gaussian'):
         """
         Initialize the annealing procedure.
         """
-        if method not in ('L-BFGS', 'NCG', 'LM', 'LM_FGH', 'L-BFGS-B'):
+        if method not in ('L-BFGS', 'NCG', 'LM', 'LM_FGH', 'L-BFGS-B', 'TNC'):
             print("ERROR: Optimization routine not implemented or recognized.")
             return 1
 
         self.initalized = True  # indicates we're at the first annealing step
 
+        # set the desired action
+        if self.method == 'LM':
+            # Levenberg-Marquardt requires a "vector action"
+            self.A = self.vecA_gaussian
+        elif type(action) == str:
+            exec 'self.A = self.%s'%(action)
+        else:
+            # Assumption: user has passed a function pointer
+            self.A = action
+
+        # set the discretization
         exec 'self.disc = self.disc_%s'%(disc,)
 
+        # set up bet array in RF = RF0 * alpha**beta
         self.alpha = alpha
         self.beta_array = beta_array
         self.betaidx = 0
@@ -377,41 +480,53 @@ class TwinExperiment:
         step). Then, RF is increased to prepare for the next annealing step.
         """
         # minimize A using the chosen method
-        if self.method == 'L-BFGS':
-            if self.betaidx == 0:
-                XPmin, Amin, rep = self.min_lbfgs(self.minpaths[0])
-            else:
-                XPmin, Amin, rep = self.min_lbfgs(self.minpaths[self.betaidx-1])
-            self.exitflags[self.betaidx] = rep.terminationtype
+        #if self.method == 'L-BFGS':
+        #    if self.betaidx == 0:
+        #        XPmin, Amin, rep = self.min_lbfgs(self.minpaths[0])
+        #    else:
+        #        XPmin, Amin, rep = self.min_lbfgs(self.minpaths[self.betaidx-1])
+        #    self.exitflags[self.betaidx] = rep.terminationtype
 
-        elif self.method == 'NCG':
-            if self.betaidx == 0:
-                XPmin, Amin, rep = self.min_ncg(self.minpaths[0])
-            else:
-                XPmin, Amin, rep = self.min_ncg(self.minpaths[self.betaidx-1])
-            self.exitflags[self.betaidx] = rep.terminationtype
+        #elif self.method == 'NCG':
+        #    if self.betaidx == 0:
+        #        XPmin, Amin, rep = self.min_ncg(self.minpaths[0])
+        #    else:
+        #        XPmin, Amin, rep = self.min_ncg(self.minpaths[self.betaidx-1])
+        #    self.exitflags[self.betaidx] = rep.terminationtype
 
-        elif self.method == 'LM':
-            if self.betaidx == 0:
-                XPmin, Amin, rep = self.min_lm(self.minpaths[0])
-            else:
-                XPmin, Amin, rep = self.min_lm(self.minpaths[self.betaidx-1])
-            self.exitinfo.append[rep]
-            self.exitflags[self.betaidx] = rep.terminationtype
+        #elif self.method == 'LM':
+        #    if self.betaidx == 0:
+        #        XPmin, Amin, rep = self.min_lm(self.minpaths[0])
+        #    else:
+        #        XPmin, Amin, rep = self.min_lm(self.minpaths[self.betaidx-1])
+        #    self.exitinfo.append[rep]
+        #    self.exitflags[self.betaidx] = rep.terminationtype
+        #
+        #elif self.method == 'LM_FGH':
+        #    if self.betaidx == 0:
+        #        XPmin, Amin, rep = self.min_lm_FGH(self.minpaths[0])
+        #    else:
+        #        XPmin, Amin, rep = self.min_lm_FGH(self.minpaths[self.betaidx-1])
+        #    self.exitinfo.append[rep]
+        #    self.exitflags[self.betaidx] = rep.terminationtype
 
-        elif self.method == 'LM_FGH':
-            if self.betaidx == 0:
-                XPmin, Amin, rep = self.min_lm_FGH(self.minpaths[0])
-            else:
-                XPmin, Amin, rep = self.min_lm_FGH(self.minpaths[self.betaidx-1])
-            self.exitinfo.append[rep]
-            self.exitflags[self.betaidx] = rep.terminationtype
-
-        elif self.method == 'L-BFGS-B':
+        if self.method == 'L-BFGS-B':
             if self.betaidx == 0:
                 XPmin, Amin, exitflag = self.min_lbfgs_scipy(self.minpaths[0])
             else:
                 XPmin, Amin, exitflag = self.min_lbfgs_scipy(self.minpaths[self.betaidx-1])
+
+        elif self.method == 'NCG':
+            if self.betaidx == 0:
+                XPmin, Amin, exitflag = self.min_cg_scipy(self.minpaths[0])
+            else:
+                XPmin, Amin, exitflag = self.min_cg_scipy(self.minpaths[self.betaidx-1])
+
+        elif self.method == 'TNC':
+            if self.betaidx == 0:
+                XPmin, Amin, exitflag = self.min_tnc_scipy(self.minpaths[0])
+            else:
+                XPmin, Amin, exitflag = self.min_tnc_scipy(self.minpaths[self.betaidx-1])
 
         else:
             print("ERROR: Optimization routine not implemented or recognized.")
@@ -441,11 +556,15 @@ class TwinExperiment:
         self.initalized = False
 
     def anneal(self, XP0, alpha, beta_array, RF0=None, bounds=None,
-               init_to_data=True, method='L-BFGS', disc='trapezoid'):
+               init_to_data=True, method='L-BFGS', disc='trapezoid',
+               opt_args=None):
         """
         Convenience function to carry out a full annealing run over all values
         of beta in beta_array.
         """
+        # get optimization extra arguments
+        self.opt_args = opt_args
+
         # properly set up the bounds arrays
         if bounds is not None:
             bounds_full = []
@@ -555,51 +674,51 @@ class TwinExperiment:
     ############################################################################
     # AD and minimization functions
     ############################################################################
-    def alglib_lbfgs_A(self, XP, grad_A, param=None):
-        """
-        ALGLIB-acceptable action for the L-BFGS algorithm.
-        Returns A, but sets grad by reference.
-        """
-        grad_A[:] = adolc.gradient(self.adolcID, XP)
-        return adolc.function(self.adolcID, XP)
-
-    def alglib_lm_vecA(self, XP, fi, param=None):
-        """
-        ALGLIB-acceptable function which sets the individual "vector-like"
-        terms of the action, for Levenburg-Marquardt.
-        """
-        fi[:] = adolc.function(self.adolcID, XP)
-
-    def alglib_lm_vecA_jac(self, XP, fi, jac, param=None):
-        """
-        ALGLIB-acceptable function which sets the Jacobian of the individual
-        "vector-like" terms of the action, for Levenburg-Marquardt.
-        """
-        fi[:] = adolc.function(self.adolcID, XP)
-        jac[:] = adolc.jacobian(self.adolcID, XP).tolist()
-
-    def alglib_lm_FGH_A(self, XP, param=None):
-        """
-        ALGLIB-acceptable action for the Levenburg-Marquardt algorithm.
-        """
-        return adolc.function(self.adolcID, XP)
-
-    def alglib_lm_A_FGH_grad(self, XP, grad_A, param=None):
-        """
-        ALGLIB-acceptable action gradient for the Levenburg-Marquardt algorithm.
-        Sets gradient by reference.
-        """
-        grad_A[:] = adolc.gradient(self.adolcID, XP)
-        return adolc.function(self.adolcID, XP)
-
-    def alglib_lm_A_FGH_hess(self, XP, grad_A, hess_A, param=None):
-        """
-        ALGLIB-acceptable action hessian for the Levenburg-Marquardt algorithm.
-        Sets gradient and hessian by reference.
-        """
-        grad_A[:] = adolc.gradient(self.adolcID, XP)
-        hess_A[:] = adolc.hessian(self.adolcID, XP).tolist()
-        return adolc.function(self.adolcID, XP)
+    #def alglib_lbfgs_A(self, XP, grad_A, param=None):
+    #    """
+    #    ALGLIB-acceptable action for the L-BFGS algorithm.
+    #    Returns A, but sets grad by reference.
+    #    """
+    #    grad_A[:] = adolc.gradient(self.adolcID, XP)
+    #    return adolc.function(self.adolcID, XP)
+    #
+    #def alglib_lm_vecA(self, XP, fi, param=None):
+    #    """
+    #    ALGLIB-acceptable function which sets the individual "vector-like"
+    #    terms of the action, for Levenburg-Marquardt.
+    #    """
+    #    fi[:] = adolc.function(self.adolcID, XP)
+    #
+    #def alglib_lm_vecA_jac(self, XP, fi, jac, param=None):
+    #    """
+    #    ALGLIB-acceptable function which sets the Jacobian of the individual
+    #    "vector-like" terms of the action, for Levenburg-Marquardt.
+    #    """
+    #    fi[:] = adolc.function(self.adolcID, XP)
+    #    jac[:] = adolc.jacobian(self.adolcID, XP).tolist()
+    #
+    #def alglib_lm_FGH_A(self, XP, param=None):
+    #    """
+    #    ALGLIB-acceptable action for the Levenburg-Marquardt algorithm.
+    #    """
+    #    return adolc.function(self.adolcID, XP)
+    #
+    #def alglib_lm_A_FGH_grad(self, XP, grad_A, param=None):
+    #    """
+    #    ALGLIB-acceptable action gradient for the Levenburg-Marquardt algorithm.
+    #    Sets gradient by reference.
+    #    """
+    #    grad_A[:] = adolc.gradient(self.adolcID, XP)
+    #    return adolc.function(self.adolcID, XP)
+    #
+    #def alglib_lm_A_FGH_hess(self, XP, grad_A, hess_A, param=None):
+    #    """
+    #    ALGLIB-acceptable action hessian for the Levenburg-Marquardt algorithm.
+    #    Sets gradient and hessian by reference.
+    #    """
+    #    grad_A[:] = adolc.gradient(self.adolcID, XP)
+    #    hess_A[:] = adolc.hessian(self.adolcID, XP).tolist()
+    #    return adolc.function(self.adolcID, XP)
 
     def scipy_A(self, XP):
         return adolc.function(self.adolcID, XP)
@@ -633,130 +752,130 @@ class TwinExperiment:
         print('Done!')
         print('Time = {0} s\n'.format(time.time()-tstart))
 
-    def min_lbfgs(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
-        """
-        Minimize f starting from x0 using L-BFGS.
-        Returns the minimizing state, the minimum function value, and the L-BFGS
-        termination information.
-        """
-        if self.taped == False:
-            self.tape_A()
-
-        # start the optimization
-        print('Beginning optimization...')
-        tstart = time.time()
-        # initialize the L-BFGS optimization
-        state = xalglib.minlbfgscreate(5, list(XP0.flatten()))
-        xalglib.minlbfgssetcond(state, epsg, epsf, epsx, maxits)
-        # run the optimization
-        xalglib.minlbfgsoptimize_g(state, self.alglib_lbfgs_A)
-        # store the result of the optimization
-        XPmin,rep = xalglib.minlbfgsresults(state)
-        Amin = self.A(XPmin)
-
-        print('Optimization complete!')
-        print('Time = {0} s'.format(time.time()-tstart))
-        print('Exit flag = {0}'.format(rep.terminationtype))
-        print('Iterations = {0}'.format(rep.iterationscount))
-        print('Obj. function value = {0}\n'.format(Amin))
-        return XPmin, Amin, rep
-
-    def min_ncg(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
-        """
-        Minimize f starting from x0 using NCG.
-        Returns the minimizing state, the minimum function value, and the L-BFGS
-        termination information.
-        """
-        if self.taped == False:
-            self.tape_A()
-
-        # start the optimization
-        print('Beginning optimization...')
-        tstart = time.time()
-        # initialize the L-BFGS optimization
-        state = xalglib.mincgcreate(list(XP0.flatten()))
-        xalglib.mincgsetcond(state, epsg, epsf, epsx, maxits)
-        # run the optimization
-        xalglib.mincgoptimize_g(state, self.alglib_lbfgs_A)
-        # store the result of the optimization
-        XPmin,rep = xalglib.mincgresults(state)
-        Amin = self.A(XPmin)
-
-        print('Optimization complete!')
-        print('Time = {0} s'.format(time.time()-tstart))
-        print('Exit flag = {0}'.format(rep.terminationtype))
-        print('Iterations = {0}'.format(rep.iterationscount))
-        print('Obj. function value = {0}\n'.format(Amin))
-        return XPmin, Amin, rep
-
-    def min_lm(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
-        """
-        Minimize the action starting from XP0, using the Levenburg-Marquardt method.
-        This method supports the use of bounds.
-        The vector-like structure used in the definition of the action is
-        exploited here.
-        """
-        if self.taped == False:
-            self.tape_A()
-
-        # start the optimization
-        print('Beginning optimization...')
-        tstart = time.time()
-        # initialize the L-BFGS optimization
-        Nf = (self.N - 1) * self.D + self.N * self.L
-        Nx = self.N * self.D + self.NPest
-        state = xalglib.minlmcreatevj(Nx , Nf, list(XP0.flatten()))
-        xalglib.minlmsetcond(state, epsg, epsf, epsx, maxits)
-        # set optimization bounds
-        if self.bounds is not None:
-            bndl, bndu = self.bounds[:,0], self.bounds[:,1]
-            xalglib.minlmsetbc(state, bndl, bndu)
-        # run the optimization
-        xalglib.minlmoptimize_vj(state, self.alglib_lm_vecA, self.alglib_lm_vecA_jac)
-        # store the result of the optimization
-        XPmin, rep = xalglib.minlmresults(state)
-        Amin = self.A(XPmin)
-
-        print('Optimization complete!')
-        print('Time = {0} s'.format(time.time()-tstart))
-        print('Exit flag = {0}'.format(rep.terminationtype))
-        print('Iterations = {0}'.format(rep.iterationscount))
-        print('Obj. function value = {0}\n'.format(Amin))
-        return XPmin, Amin, rep
-
-    def min_lm_FGH(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
-        """
-        Minimize the action starting from XP0, using the Levenburg-Marquardt method.
-        This method supports the use of bounds.
-        This is for a general action function, NOT using the vector-like
-        substructure in its definition.
-        """
-        if self.taped == False:
-            self.tape_A()
-
-        # start the optimization
-        print("Beginning optimization...")
-        tstart = time.time()
-        # initialize the LM algorithm
-        state = xalglib.minlmcreatefgh(list(XP0.flatten()))
-        xalglib.minlmsetcond(state, epsg, epsf, epsx, maxits)
-        # set optimization bounds
-        if self.bounds is not None:
-            bndl,bndu = self.bounds[:,0], self.bounds[:,1]
-            xalglib.minlmsetbc(state, bndl, bndu)
-        # run the optimization
-        xalglib.minlmoptimize_fgh(state, self.alglib_LM_A, self.alglib_LM_A_grad,
-                                  self.alglib_LM_A_hess)
-        # store the result
-        XPmin,rep = xalglib.minlmresults(state)
-        Amin = self.A(XPmin)
-
-        print('Optimization complete!')
-        print('Time = {0} s'.format(time.time()-tstart))
-        print('Exit flag = {0}'.format(rep.terminationtype))
-        print('Iterations = {0}'.format(rep.iterationscount))
-        print('Obj. function value = {0}\n'.format(Amin))
-        return XPmin, Amin, rep
+    #def min_lbfgs(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
+    #    """
+    #    Minimize f starting from x0 using L-BFGS.
+    #    Returns the minimizing state, the minimum function value, and the L-BFGS
+    #    termination information.
+    #    """
+    #    if self.taped == False:
+    #        self.tape_A()
+    #
+    #    # start the optimization
+    #    print('Beginning optimization...')
+    #    tstart = time.time()
+    #    # initialize the L-BFGS optimization
+    #    state = xalglib.minlbfgscreate(5, list(XP0.flatten()))
+    #    xalglib.minlbfgssetcond(state, epsg, epsf, epsx, maxits)
+    #    # run the optimization
+    #    xalglib.minlbfgsoptimize_g(state, self.alglib_lbfgs_A)
+    #    # store the result of the optimization
+    #    XPmin,rep = xalglib.minlbfgsresults(state)
+    #    Amin = self.A(XPmin)
+    #
+    #    print('Optimization complete!')
+    #    print('Time = {0} s'.format(time.time()-tstart))
+    #    print('Exit flag = {0}'.format(rep.terminationtype))
+    #    print('Iterations = {0}'.format(rep.iterationscount))
+    #    print('Obj. function value = {0}\n'.format(Amin))
+    #    return XPmin, Amin, rep
+    #
+    #def min_ncg(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
+    #    """
+    #    Minimize f starting from x0 using NCG.
+    #    Returns the minimizing state, the minimum function value, and the L-BFGS
+    #    termination information.
+    #    """
+    #    if self.taped == False:
+    #        self.tape_A()
+    #
+    #    # start the optimization
+    #    print('Beginning optimization...')
+    #    tstart = time.time()
+    #    # initialize the L-BFGS optimization
+    #    state = xalglib.mincgcreate(list(XP0.flatten()))
+    #    xalglib.mincgsetcond(state, epsg, epsf, epsx, maxits)
+    #    # run the optimization
+    #    xalglib.mincgoptimize_g(state, self.alglib_lbfgs_A)
+    #    # store the result of the optimization
+    #    XPmin,rep = xalglib.mincgresults(state)
+    #    Amin = self.A(XPmin)
+    #
+    #    print('Optimization complete!')
+    #    print('Time = {0} s'.format(time.time()-tstart))
+    #    print('Exit flag = {0}'.format(rep.terminationtype))
+    #    print('Iterations = {0}'.format(rep.iterationscount))
+    #    print('Obj. function value = {0}\n'.format(Amin))
+    #    return XPmin, Amin, rep
+    #
+    #def min_lm(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
+    #    """
+    #    Minimize the action starting from XP0, using the Levenburg-Marquardt method.
+    #    This method supports the use of bounds.
+    #    The vector-like structure used in the definition of the action is
+    #    exploited here.
+    #    """
+    #    if self.taped == False:
+    #        self.tape_A()
+    #
+    #    # start the optimization
+    #    print('Beginning optimization...')
+    #    tstart = time.time()
+    #    # initialize the L-BFGS optimization
+    #    Nf = (self.N - 1) * self.D + self.N * self.L
+    #    Nx = self.N * self.D + self.NPest
+    #    state = xalglib.minlmcreatevj(Nx , Nf, list(XP0.flatten()))
+    #    xalglib.minlmsetcond(state, epsg, epsf, epsx, maxits)
+    #    # set optimization bounds
+    #    if self.bounds is not None:
+    #        bndl, bndu = self.bounds[:,0], self.bounds[:,1]
+    #        xalglib.minlmsetbc(state, bndl, bndu)
+    #    # run the optimization
+    #    xalglib.minlmoptimize_vj(state, self.alglib_lm_vecA, self.alglib_lm_vecA_jac)
+    #    # store the result of the optimization
+    #    XPmin, rep = xalglib.minlmresults(state)
+    #    Amin = self.A(XPmin)
+    #
+    #    print('Optimization complete!')
+    #    print('Time = {0} s'.format(time.time()-tstart))
+    #    print('Exit flag = {0}'.format(rep.terminationtype))
+    #    print('Iterations = {0}'.format(rep.iterationscount))
+    #    print('Obj. function value = {0}\n'.format(Amin))
+    #    return XPmin, Amin, rep
+    #
+    #def min_lm_FGH(self, XP0, epsg=1e-8, epsf=1e-8, epsx=1e-8, maxits=10000):
+    #    """
+    #    Minimize the action starting from XP0, using the Levenburg-Marquardt method.
+    #    This method supports the use of bounds.
+    #    This is for a general action function, NOT using the vector-like
+    #    substructure in its definition.
+    #    """
+    #    if self.taped == False:
+    #        self.tape_A()
+    #
+    #    # start the optimization
+    #    print("Beginning optimization...")
+    #    tstart = time.time()
+    #    # initialize the LM algorithm
+    #    state = xalglib.minlmcreatefgh(list(XP0.flatten()))
+    #    xalglib.minlmsetcond(state, epsg, epsf, epsx, maxits)
+    #    # set optimization bounds
+    #    if self.bounds is not None:
+    #        bndl,bndu = self.bounds[:,0], self.bounds[:,1]
+    #        xalglib.minlmsetbc(state, bndl, bndu)
+    #    # run the optimization
+    #    xalglib.minlmoptimize_fgh(state, self.alglib_LM_A, self.alglib_LM_A_grad,
+    #                              self.alglib_LM_A_hess)
+    #    # store the result
+    #    XPmin,rep = xalglib.minlmresults(state)
+    #    Amin = self.A(XPmin)
+    #
+    #    print('Optimization complete!')
+    #    print('Time = {0} s'.format(time.time()-tstart))
+    #    print('Exit flag = {0}'.format(rep.terminationtype))
+    #    print('Iterations = {0}'.format(rep.iterationscount))
+    #    print('Obj. function value = {0}\n'.format(Amin))
+    #    return XPmin, Amin, rep
 
     def min_lbfgs_scipy(self, XP0):
         """
@@ -771,9 +890,55 @@ class TwinExperiment:
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
-        #res = opt.minimize(self.A, XP0, method='L-BFGS-B', jac=self.scipy_A_grad,
-        #                   options=self.opt_args, bounds=self.bounds)
         res = opt.minimize(self.scipy_A_plusgrad, XP0, method='L-BFGS-B', jac=True,
+                           options=self.opt_args, bounds=self.bounds)
+        XPmin,status,Amin = res.x, res.status, res.fun
+
+        print("Optimization complete!")
+        print("Time = {0} s".format(time.time()-tstart))
+        print("Exit flag = {0}".format(status))
+        print("Exit message: {0}".format(res.message))
+        print("Iterations = {0}".format(res.nit))
+        print("Obj. function value = {0}\n".format(Amin))
+        return XPmin, Amin, status
+
+    def min_cg_scipy(self, XP0):
+        """
+        Minimize f starting from x0 using nonlinear CG method in scipy.
+        Returns the minimizing state, the minimum function value, and the CG
+        termination information.
+        """
+        if self.taped == False:
+            self.tape_A()
+
+        # start the optimization
+        print("Beginning optimization...")
+        tstart = time.time()
+        res = opt.minimize(self.scipy_A_plusgrad, XP0, method='CG', jac=True,
+                           options=self.opt_args)
+        XPmin,status,Amin = res.x, res.status, res.fun
+
+        print("Optimization complete!")
+        print("Time = {0} s".format(time.time()-tstart))
+        print("Exit flag = {0}".format(status))
+        print("Exit message: {0}".format(res.message))
+        print("Iterations = {0}".format(res.nit))
+        print("Obj. function value = {0}\n".format(Amin))
+        return XPmin, Amin, status
+
+    def min_tnc_scipy(self, XP0):
+        """
+        Minimize f starting from x0 using Newton-CG method in scipy.
+        Returns the minimizing state, the minimum function value, and the CG
+        termination information.
+        """
+        if self.taped == False:
+            self.tape_A()
+
+        # start the optimization
+        print("Beginning optimization...")
+        tstart = time.time()
+        res = opt.minimize(self.scipy_A_plusgrad, XP0, method='TNC', jac=True,
                            options=self.opt_args, bounds=self.bounds)
         XPmin,status,Amin = res.x, res.status, res.fun
 
