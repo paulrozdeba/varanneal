@@ -410,6 +410,8 @@ class TwinExperiment:
         if method not in ('L-BFGS', 'NCG', 'LM', 'LM_FGH', 'L-BFGS-B', 'TNC'):
             print("ERROR: Optimization routine not implemented or recognized.")
             return 1
+        else:
+            self.method = method
 
         self.initalized = True  # indicates we're at the first annealing step
 
@@ -461,11 +463,6 @@ class TwinExperiment:
             self.bounds = bounds
         else:
             self.bounds = np.array(bounds)
-
-        self.method = method
-
-        if self.method == 'LM':
-            self.A = self.vecA_gaussian
 
         # array to store optimization exit flags
         self.exitflags = np.empty(self.Nbeta, dtype='int')
@@ -655,21 +652,20 @@ class TwinExperiment:
 
         # Save model error / RF
         if type(self.RF) == np.ndarray:
-            if self.RF0.shape == (self.D,):
-                savearray[:, 4] = self.fe_array / (self.RF0[cmpt] * self.alpha**self.beta_array)
-                if filename.endswith('.npy'):
-                    np.save(filename, savearray)
-                else:
-                    np.savetxt(filename, savearray)
+            if self.RF0.shape == (self.N - 1, self.D):
+                savearray[:, 4] = self.fe_array / (self.RF0[0, 0] * self.alpha**self.beta_array)
+            elif self.RF0.shape == (self.N - 1, self.D, self.D):
+                savearray[:, 4] = self.fe_array / (self.RF0[0, 0, 0] * self.alpha**self.beta_array)
             else:
                 print("RF shape currently not supported for saving.")
-
+                return 1
         else:
             savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
-            if filename.endswith('.npy'):
-                np.save(filename, savearray)
-            else:
-                np.savetxt(filename, savearray)
+
+        if filename.endswith('.npy'):
+            np.save(filename, savearray)
+        else:
+            np.savetxt(filename, savearray)
 
     ############################################################################
     # AD and minimization functions
