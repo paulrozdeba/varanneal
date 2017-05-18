@@ -48,10 +48,10 @@ class TwinExperiment:
         else:
             self.N = N
 
-        self.t = t[nstart:(nstart + N)]
-        self.Y = self.Y[nstart:(nstart + N)]
+        self.t = t[nstart:(nstart + self.N)]
+        self.Y = self.Y[nstart:(nstart + self.N)]
         if self.stim is not None:
-            self.stim = self.stim[nstart:(nstart + N)]
+            self.stim = self.stim[nstart:(nstart + self.N)]
 
         # Reshape RM and RF so that they span the whole time series.  This is
         # done because in the action evaluation, it is more efficient to let
