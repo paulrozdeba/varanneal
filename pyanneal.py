@@ -7,7 +7,7 @@ import adolc
 import time
 import scipy.optimize as opt
 
-class TwinExperiment:
+class Annealer:
     def __init__(self, f, dt, D, Lidx, RM, RF0,
                  stim_file=None, stim=None, data_file=None, Y=None, t=None,
                  N=None, nstart=0, P=(), Pidx=(), adolcID=0):
@@ -35,8 +35,6 @@ class TwinExperiment:
             self.stim = stim
         else:
             self.load_stim(stim_file)
-
-        #self.nstart = nstart  # first time index to use from data
 
         # extract data from nstart to nstart + N
         if N is None:
@@ -79,9 +77,6 @@ class TwinExperiment:
         # other stuff
         self.taped = False
         self.initalized = False
-
-        # arguments for optimization routine
-        #self.opt_args = None
 
     def load_data(self, data_file):
         """
@@ -457,7 +452,7 @@ class TwinExperiment:
     ############################################################################
     def anneal_init(self, XP0, alpha, beta_array, RF0=None, bounds=None,
                     init_to_data=True, method='L-BFGS', disc='trapezoid',
-                    action='A_gaussian'):
+                    action='A_gaussian', opt_args=None):
         """
         Initialize the annealing procedure.
         """
@@ -520,9 +515,6 @@ class TwinExperiment:
 
         # array to store optimization exit flags
         self.exitflags = np.empty(self.Nbeta, dtype='int')
-
-    def set_disc(self, disc):
-        exec 'self.disc = self.disc_%s'%(disc,)
 
     def anneal_step(self):
         """
@@ -741,7 +733,7 @@ class TwinExperiment:
         print('Done!')
         print('Time = {0} s\n'.format(time.time()-tstart))
 
-    def min_lbfgs_scipy(self, XP0):
+    def min_lbfgs_scipy(self, XP0, options):
         """
         Minimize f starting from x0 using L-BFGS-B method in scipy.
         This method supports the use of bounds.
@@ -755,7 +747,7 @@ class TwinExperiment:
         print("Beginning optimization...")
         tstart = time.time()
         res = opt.minimize(self.A_plusgrad_taped, XP0, method='L-BFGS-B', jac=True,
-                           options=self.opt_args, bounds=self.bounds)
+                           options=options, bounds=self.bounds)
         XPmin,status,Amin = res.x, res.status, res.fun
 
         print("Optimization complete!")
@@ -766,7 +758,7 @@ class TwinExperiment:
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_cg_scipy(self, XP0):
+    def min_cg_scipy(self, XP0, options):
         """
         Minimize f starting from x0 using nonlinear CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
@@ -779,7 +771,7 @@ class TwinExperiment:
         print("Beginning optimization...")
         tstart = time.time()
         res = opt.minimize(self.scipy_A_plusgrad, XP0, method='CG', jac=True,
-                           options=self.opt_args)
+                           options=options)
         XPmin,status,Amin = res.x, res.status, res.fun
 
         print("Optimization complete!")
@@ -790,7 +782,7 @@ class TwinExperiment:
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_tnc_scipy(self, XP0):
+    def min_tnc_scipy(self, XP0, options):
         """
         Minimize f starting from x0 using Newton-CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
@@ -803,7 +795,7 @@ class TwinExperiment:
         print("Beginning optimization...")
         tstart = time.time()
         res = opt.minimize(self.A_plusgrad_taped, XP0, method='TNC', jac=True,
-                           options=self.opt_args, bounds=self.bounds)
+                           options=options, bounds=self.bounds)
         XPmin,status,Amin = res.x, res.status, res.fun
 
         print("Optimization complete!")
@@ -814,7 +806,7 @@ class TwinExperiment:
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_lm_scipy(self, XP0):
+    def min_lm_scipy(self, XP0, options):
         """
         Minimize f starting from x0 using Levenberg-Marquardt in scipy.
         Returns the minimizing state, the minimum function value, and the CG
@@ -827,7 +819,7 @@ class TwinExperiment:
         print("Beginning optimization...")
         tstart = time.time()
         res = opt.root(self.A_plusjac_taped, XP0, method='lm', jac=True,
-                       options=self.opt_args)
+                       options=options)
 
         XPmin,status,Amin = res.x, res.status, res.fun
 
