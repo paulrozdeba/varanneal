@@ -370,8 +370,8 @@ class Annealer:
                              opt_args, adolcID)
         for i in beta_array:
             print('------------------------------')
-            print('Step %d of %d'%(self.betaidx+1,len(self.beta_array)))
-            print('alpha = %f, beta = %f'%(self.alpha,self.beta))
+            print('Step %d of %d'%(self.betaidx+1, len(self.beta_array)))
+            print('beta = %d, RF = %.8e'%(self.beta, self.RF))
             print('')
             self.anneal_step()
 
@@ -671,13 +671,13 @@ class Annealer:
     def gradA_taped(self, XP):
         return adolc.gradient(self.adolcID, XP)
 
-    def A_plusgrad_taped(self, XP):
+    def A_gradA_taped(self, XP):
         return adolc.function(self.adolcID, XP), adolc.gradient(self.adolcID, XP)
 
     def jacA_taped(self, XP):
         return adolc.jacobian(self.adolcID, XP)
 
-    def A_plusjac_taped(self, XP):
+    def A_jacaA_taped(self, XP):
         return adolc.function(self.adolcID, XP), adolc.jacobian(self.adolcID, XP)
 
     def hessianA_taped(self, XP):
@@ -699,7 +699,7 @@ class Annealer:
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
-        res = opt.minimize(self.A_plusgrad_taped, XP0, method='L-BFGS-B', jac=True,
+        res = opt.minimize(self.A_gradA_taped, XP0, method='L-BFGS-B', jac=True,
                            options=self.opt_args, bounds=self.bounds)
         XPmin,status,Amin = res.x, res.status, res.fun
 
@@ -723,7 +723,7 @@ class Annealer:
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
-        res = opt.minimize(self.scipy_A_plusgrad, XP0, method='CG', jac=True,
+        res = opt.minimize(self.A_gradA_taped, XP0, method='CG', jac=True,
                            options=self.opt_args)
         XPmin,status,Amin = res.x, res.status, res.fun
 
@@ -747,7 +747,7 @@ class Annealer:
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
-        res = opt.minimize(self.A_plusgrad_taped, XP0, method='TNC', jac=True,
+        res = opt.minimize(self.A_gradA_taped, XP0, method='TNC', jac=True,
                            options=self.opt_args, bounds=self.bounds)
         XPmin,status,Amin = res.x, res.status, res.fun
 
@@ -771,7 +771,7 @@ class Annealer:
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
-        res = opt.root(self.A_plusjac_taped, XP0, method='lm', jac=True,
+        res = opt.root(self.A_jacA_taped, XP0, method='lm', jac=True,
                        options=self.opt_args)
 
         XPmin,status,Amin = res.x, res.status, res.fun

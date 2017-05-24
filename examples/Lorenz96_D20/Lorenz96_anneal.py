@@ -8,7 +8,7 @@ differentiation to do the action minimization at each step.
 
 import numpy as np
 import varanneal
-import sys
+import sys, time
 
 # Define the model
 def l96(t, x, k):
@@ -57,9 +57,12 @@ anneal1.set_model(l96, P, D)
 anneal1.set_data(data, dt, t=times)
 # Run the annealing using L-BFGS-B
 BFGS_options = {'gtol':1.0e-12, 'ftol':1.0e-12, 'maxfun':1000000, 'maxiter':1000000}
+
+tstart = time.time()
 anneal1.anneal(XP0, alpha, beta_array, RM, RF0, Lidx, Pidx,
                disc='SimpsonHermite', method='L-BFGS-B', opt_args=BFGS_options,
                adolcID=0)
+print("\nADOL-C annealing completed in %f s."%(time.time() - tstart))
 
 # Save the results of annealing
 anneal1.save_paths("paths.npy")

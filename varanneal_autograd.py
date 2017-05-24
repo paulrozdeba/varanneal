@@ -34,10 +34,10 @@ class Annealer:
         """
         Constructor for the Annealer class.
         """
-        self.taped = False
+        self.taped = []
         self.annealing_initialized = False
 
-    def set_model(self, f, D):
+    def set_model(self, f, p, D):
         """
         Set the D-dimensional dynamical model for the estimated system.
         The model must take arguments in the following order:
@@ -46,20 +46,18 @@ class Annealer:
             t, x, (p, stim)
         where x and stim are at the "current" time t.  Thus, x should be a
         D-dimensional vector, and stim similarly a D_stim-dimensional vector.
-        """
-        self.f = f
-        self.D = D
 
-    def set_parameters(self, p):
-        """
-        Set static values for the model parameters.
+        Also set static values for the model parameters.
         Later, you can set which parameters are to be estimated during the 
         annealing when the anneal functions are called.
         """
+        self.f = f
         self.P = p
+        self.D = D
+
         self.NP = len(p)
 
-    def set_data_fromfile(self, data_file, stim_file=None):
+    def set_data_fromfile(self, data_file, dt, stim_file=None):
         """
         Load data & stimulus time series from file.
         If data is a text file, must be in multi-column format with L+1 columns:
@@ -80,14 +78,16 @@ class Annealer:
             s = np.loadtxt(stim_file)
         self.stim = s[:, 1:]
 
-    def set_data(self, data, stim=None, t=None, nstart=0, N=None):
+        self.dt = dt
+
+    def set_data(self, data, dt, stim=None, t=None, nstart=0, N=None):
         """
         Directly pass in data and stim arrays
         If you pass in t, it's assumed y/stim does not contain time.  Otherwise,
         it has to contain time in the zeroth element of each sample.
         """
         if N is None:
-            self.N = self.Y.shape[0]
+            self.N = data.shape[0]
         else:
             self.N = N
 
@@ -96,81 +96,17 @@ class Annealer:
             self.Y = data[nstart:(nstart + self.N), 1:]
             if stim is not None:
                 self.stim = stim[nstart:(nstart + self.N), 1:]
+            else:
+                self.stim = None
         else:
             self.t = t[nstart:(nstart + self.N)]
             self.Y = data[nstart:(nstart + self.N)]
             if stim is not None:
                 self.stim = stim[nstart:(nstart + self.N)]
-    
-    def old_init(self, f, dt, D, Lidx, RM, RF0,
-                 stim_file=None, stim=None, data_file=None, Y=None, t=None,
-                 N=None, nstart=0, P=(), Pidx=(), adolcID=0):
-        self.f = f
+            else:
+                self.stim = None
+
         self.dt = dt
-        self.D = D
-        self.Lidx = Lidx
-        self.L = len(Lidx)
-        self.RM = RM
-        self.RF0 = RF0
-        self.P = P
-        self.Pidx = Pidx
-        self.NP = len(P)
-        self.NPest = len(Pidx)
-        self.adolcID = adolcID
-
-        # load data
-        if data_file is None:
-            self.Y = Y
-        else:
-            self.load_data(data_file)
-
-        # load stim
-        if stim_file is None:
-            self.stim = stim
-        else:
-            self.load_stim(stim_file)
-
-        # extract data from nstart to nstart + N
-        if N is None:
-            self.N = self.Y.shape[0]
-        else:
-            self.N = N
-
-        self.t = t[nstart:(nstart + self.N)]
-        self.Y = self.Y[nstart:(nstart + self.N)]
-        if self.stim is not None:
-            self.stim = self.stim[nstart:(nstart + self.N)]
-
-        # Reshape RM and RF so that they span the whole time series.  This is
-        # done because in the action evaluation, it is more efficient to let
-        # numpy handle multiplication over time rather than using python loops.
-        if type(self.RM) == np.ndarray:
-            if self.RM.shape == (self.L,):
-                self.RM = np.resize(self.RM, (self.N, self.L))
-            elif self.RM.shape == (self.L, self.L):
-                self.RM = np.resize(self.RM, (self.N, self.L, self.L))
-            elif self.RM.shape == (self.N, self.L) or \
-                 self.RM.shape == (self.N, self.L, self.L):
-                pass
-            else:
-                print("ERROR: RM has an invalid shape. Exiting.")
-                exit(1)
-
-        if type(self.RF0) == np.ndarray:
-            if self.RF0.shape == (self.D,):
-                self.RF0 = np.resize(self.RF0, (self.N - 1, self.D))
-            elif self.RF0.shape == (self.D, self.D):
-                self.RF0 = np.resize(self.RF0, (self.N - 1, self.D, self.D))
-            elif self.RF0.shape == (self.N - 1, self.D) or \
-                 self.RF0.shape == (self.N - 1, self.D, self.D):
-                pass
-            else:
-                print("ERROR: RF0 has an invalid shape. Exiting.")
-                exit(1)
-
-        # other stuff
-        self.taped = False
-        self.initalized = False
 
     ############################################################################
     # Gaussian action
@@ -179,7 +115,35 @@ class Annealer:
         """
         Calculate the Gaussian action all in one go.
         """
-        # Extract state and parameters from XP
+        merr = self.me_gaussian(XP[:self.N*self.D])
+        ferr = self.fe_gaussian(XP)
+        return merr + ferr
+
+    def me_gaussian(self, X):
+        """
+        Gaussian measurement error.
+        """
+        x = np.reshape(X, (self.N, self.D))
+        diff = x[:, self.Lidx] - self.Y
+
+        if type(self.RM) == np.ndarray:
+            # Contract RM with error
+            if self.RM.shape == (self.N, self.L):
+                merr = np.einsum('ij, ij, ij', diff, self.RM, diff)
+            elif self.RM.shape == (self.N, self.L, self.L):
+                merr = np.einsum('ij, ijk, ik', diff, self.RM, diff)
+            else:
+                print("ERROR: RM is in an invalid shape.")
+        else:
+            merr = self.RM * np.einsum('ij, ij', diff, diff)
+
+        return merr / (self.L * self.N)
+
+    def fe_gaussian(self, XP):
+        """
+        Gaussian model error.
+        """
+        # Extract state and parameters from XP.
         if self.NPest == 0:
             x = np.reshape(XP, (self.N, self.D))
             p = self.P
@@ -197,22 +161,9 @@ class Annealer:
                 else:
                     p.append(self.P[i])
 
-        # Measurement error
-        diff = x[:, self.Lidx] - self.Y
-
-        if type(self.RM) == np.ndarray:
-            # Contract RM with error
-            if self.RM.shape == (self.N, self.L):
-                merr = np.einsum('ij, ij, ij', diff, self.RM, diff)
-            elif self.RM.shape == (self.N, self.L, self.L):
-                merr = np.einsum('ij, ijk, ik', diff, self.RM, diff)
-            else:
-                print("ERROR: RM is in an invalid shape.")
-        else:
-            merr = self.RM * np.einsum('ij, ij', diff, diff)
-
-        # Model error
+        # Start calculating the model error.
         if self.disc.im_func.__name__ == "disc_SimpsonHermite":
+            #disc_vec = self.disc(x, p)
             disc_vec1, disc_vec2 = self.disc(x, p)
             diff1 = x[2::2] - x[:-2:2] - disc_vec1
             diff2 = x[1::2] - disc_vec2
@@ -248,7 +199,7 @@ class Annealer:
             else:
                 ferr = self.RF * np.einsum('ij, ij', diff, diff)
 
-        return merr/(self.L*self.N) + ferr/(self.D*(self.N-1))
+        return ferr / (self.D * (self.N - 1))
 
     def vecA_gaussian(self, XP):
         """
@@ -328,133 +279,6 @@ class Annealer:
 
         return np.append(merr/(self.N * self.L), ferr/((self.N - 1) * self.D))
 
-#    def A_gaussian_pieced(self, XP):
-#        """
-#        Gaussian action.
-#        """        
-#        if self.NPest == 0:
-#            x = np.reshape(XP, (self.N, self.D))
-#            p = self.P
-#        elif self.NP == self.NPest:
-#            x = np.reshape(XP[:-self.NP], (self.N, self.D))
-#            p = XP[-self.NP:]
-#        else:
-#            x = np.reshape(XP[:-self.NPest], (self.N, self.D))
-#            p = []
-#            j = self.NPest
-#            for i in xrange(self.NP):
-#                if i in self.Pidx:
-#                    p.append(XP[-j])
-#                    j -= 1
-#                else:
-#                    p.append(self.P[i])
-#
-#        # evaluate the action
-#        me = self.me_gaussian(x, p)
-#        fe = self.fe_gaussian(x, p)
-#        return me + fe
-#
-#    # Gaussian action terms for matrix Rf and Rm
-#    def me_gaussian(self, x, p):
-#        """
-#        Gaussian measurement error.
-#        """
-#        err = self.me_gaussian_TS(x, p)
-#        return np.sum(err) / (self.L * self.N)
-#
-#    def fe_gaussian(self, x, p):
-#        """
-#        Gaussian model error.
-#        """
-#        err = self.fe_gaussian_TS(x, p)
-#        return np.sum(err) / (self.D * (self.N - 1))
-#
-#    # Time series of squared errors, times RM or RF.
-#    def me_gaussian_TS(self, x, p):
-#        """
-#        Time series of squared measurement errors, times RM.
-#        """
-#        diff = self.me_gaussian_TS_vec(x, p)
-#
-#        if type(self.RM) == np.ndarray:
-#            if self.RM.shape == (self.N, self.L):
-#                err = self.RM * diff * diff
-#            elif self.RM.shape == (self.L, self.L):
-#                err = np.einsum('', diff, self.RM, diff)
-#                for diffn in diff:
-#                    err[i] = np.dot(diffn, np.dot(self.RM, diffn))
-#            elif self.RM.shape == (self.N, self.L, self.L):
-#                for diffn,RMn in zip(diff, self._RM):
-#                    err[i] = np.dot(diffn, np.dot(RMn, diffn))
-#            else:
-#                print("ERROR: RM is in an invalid shape.")
-#        else:
-#            err = self.RM * diff * diff
-#
-#        return err
-#
-#    def fe_gaussian_TS(self, x, p):
-#        """
-#        Time series of squared model errors, times RF.
-#        """
-#        diff = self.fe_gaussian_TS_vec(x, p)
-#
-#        if type(self.RF) == np.ndarray:
-#            if self.RF.shape == (self.D,):
-#                err = np.zeros(self.N - 1, dtype=diff.dtype)
-#                for i in xrange(self.N - 1):
-#                    err[i] = np.sum(self.RF * diff[i] * diff[i])
-#
-#            elif self.RF.shape == (self.N - 1, self.D):
-#                err = self.RF * diff * diff
-#
-#            elif self.RF.shape == (self.D, self.D):
-#                err = np.zeros(self.N - 1, dtype=diff.dtype)
-#                for i in xrange(self.N - 1):
-#                    err[i] = np.dot(diff[i], np.dot(self.RF, diff[i]))
-#
-#            elif self.RF.shape == (self.N - 1, self.D, self.D):
-#                err = np.zeros(self.N - 1, dtype=diff.dtype)
-#                for i in xrange(self.N - 1):
-#                    err[i] = np.dot(diff[i], np.dot(RF[i], diff[i]))
-#
-#            else:
-#                print("ERROR: RF is in an invalid shape.")
-#
-#        else:
-#            err = self.RF * diff * diff
-#
-#        return err
-#
-#    # Time series of error vectors.
-#    def me_gaussian_TS_vec(self, x, p):
-#        """
-#        Time series of measurement error vectors, NOT times RM.
-#        """
-#        if x.ndim == 1:
-#            x = np.reshape(x, (self.N, self.D))
-#        diff = x[:, self.Lidx] - self.Y
-#
-#        return diff
-#
-#    def fe_gaussian_TS_vec(self, x, p):
-#        """
-#        Time series of model error vectors, NOT times RF.
-#        """
-#        if x.ndim == 1:
-#            x = np.reshape(x, (self.N, self.D))
-#
-#        if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-#            disc_vec = self.disc(x, p)
-#            #diff = np.zeros((self.N - 1, self.D), dtype="object")
-#            diff = np.zeros((self.N - 1, self.D), dtype=x.dtype)
-#            diff[:-1:2] = x[2::2] - x[:-2:2] - disc_vec[:-1:2]
-#            diff[1::2] = x[1::2] - disc_vec[1::2]
-#        else:
-#            diff = x[1:] - x[:-1] - self.disc(x, p)
-#
-#        return diff
-
     ############################################################################
     # Discretization routines
     ############################################################################
@@ -519,25 +343,27 @@ class Annealer:
     # Annealing functions
     ############################################################################
     def anneal(self, XP0, alpha, beta_array, RM, RF0, Lidx, Pidx, 
-               init_to_data=True, method='L-BFGS', disc='trapezoid',
-               bounds=None, opt_args=None):
+               init_to_data=True, action='A_gaussian', disc='trapezoid',
+               method='L-BFGS-B', bounds=None, opt_args=None):
         """
         Convenience function to carry out a full annealing run over all values
         of beta in beta_array.
         """
         # initialize the annealing procedure, if not already done
-        if self.initalized == False:
-            self.anneal_init(XP0, alpha, beta_array, RF0, bounds_full, init_to_data, method, disc)
+        if self.annealing_initialized == False:
+            self.anneal_init(XP0, alpha, beta_array, RM, RF0, Lidx, Pidx,
+                             init_to_data, action, disc, method, bounds,
+                             opt_args)
         for i in beta_array:
             print('------------------------------')
-            print('Step %d of %d'%(self.betaidx+1,len(self.beta_array)))
-            print('alpha = %f, beta = %f'%(self.alpha,self.beta))
+            print('Step %d of %d'%(self.betaidx+1, len(self.beta_array)))
+            print('beta = %d, RF = %.8e'%(self.beta, self.RF))
             print('')
             self.anneal_step()
 
-    def anneal_init(self, XP0, alpha, beta_array, RF0=None, bounds=None,
-                    init_to_data=True, method='L-BFGS', disc='trapezoid',
-                    action='A_gaussian', opt_args=None):
+    def anneal_init(self, XP0, alpha, beta_array, RM, RF0, Lidx, Pidx, 
+                    init_to_data=True, action='A_gaussian', disc='trapezoid',
+                    method='L-BFGS-B', bounds=None, opt_args=None):
         """
         Initialize the annealing procedure.
         """
@@ -579,29 +405,33 @@ class Annealer:
         # Reshape RM and RF so that they span the whole time series.  This is
         # done because in the action evaluation, it is more efficient to let
         # numpy handle multiplication over time rather than using python loops.
-        if type(self.RM) == np.ndarray:
-            if self.RM.shape == (self.L,):
-                self.RM = np.resize(self.RM, (self.N, self.L))
-            elif self.RM.shape == (self.L, self.L):
-                self.RM = np.resize(self.RM, (self.N, self.L, self.L))
-            elif self.RM.shape == (self.N, self.L) or \
-                 self.RM.shape == (self.N, self.L, self.L):
-                pass
+        if type(RM) == np.ndarray:
+            if RM.shape == (self.L,):
+                self.RM = np.resize(RM, (self.N, self.L))
+            elif RM.shape == (self.L, self.L):
+                self.RM = np.resize(RM, (self.N, self.L, self.L))
+            elif RM.shape == (self.N, self.L) or RM.shape == np.resize(self.N, self.L, self.L):
+                self.RM = RM
             else:
                 print("ERROR: RM has an invalid shape. Exiting.")
                 exit(1)
 
-        if type(self.RF0) == np.ndarray:
-            if self.RF0.shape == (self.D,):
-                self.RF0 = np.resize(self.RF0, (self.N - 1, self.D))
-            elif self.RF0.shape == (self.D, self.D):
-                self.RF0 = np.resize(self.RF0, (self.N - 1, self.D, self.D))
-            elif self.RF0.shape == (self.N - 1, self.D) or \
-                 self.RF0.shape == (self.N - 1, self.D, self.D):
-                pass
+        else:
+            self.RM = RM
+
+        if type(RF0) == np.ndarray:
+            if RF0.shape == (self.D,):
+                self.RF0 = np.resize(RF0, (self.N - 1, self.D))
+            elif RF0.shape == (self.D, self.D):
+                self.RF0 = np.resize(RF0, (self.N - 1, self.D, self.D))
+            elif RF0.shape == (self.N - 1, self.D) or RF0.shape == (self.N - 1, self.D, self.D):
+                self.RF0 = RF0
             else:
                 print("ERROR: RF0 has an invalid shape. Exiting.")
                 exit(1)
+
+        else:
+            self.RF0 = RF0
 
         # set up beta array in RF = RF0 * alpha**beta
         self.alpha = alpha
@@ -685,15 +515,12 @@ class Annealer:
 
         # update optimal parameter values
         if self.NPest > 0:
-            if isinstance(XPmin[0], adolc._adolc.adouble):
-                self.P[self.Pidx] = np.array([XPmin[-self.NPest + i].val for i in xrange(self.NPest)])
-            else:
-                self.P[self.Pidx] = np.copy(XPmin[-self.NPest:])
+            self.P[self.Pidx] = XPmin[-self.NPest:]
 
         # store A_min and the minimizing path
         self.A_array[self.betaidx] = Amin
-        self.me_array[self.betaidx] = self.me_gaussian(np.array(XPmin[:self.N*self.D]), self.P)
-        self.fe_array[self.betaidx] = self.fe_gaussian(np.array(XPmin[:self.N*self.D]), self.P)
+        self.me_array[self.betaidx] = self.me_gaussian(np.array(XPmin[:self.N*self.D]))
+        self.fe_array[self.betaidx] = self.fe_gaussian(np.array(XPmin))
         self.minpaths[self.betaidx] = np.array(XPmin)
 
         # increase RF
@@ -705,9 +532,9 @@ class Annealer:
         # set flags indicating that A needs to be retaped, and that we're no
         # longer at the beginning of the annealing procedure
         self.taped = []
-        if self.initialized:
+        if self.annealing_initialized:
             # Indicate no longer at beta_0
-            self.initalized = False
+            self.initialized = False
 
     ################################################################################
     # Routines to save annealing results.
@@ -779,14 +606,14 @@ class Annealer:
         else:
             np.savetxt(filename, savearray)
 
-    def save_as_minAone(self, savedir='', savefile=None):
+    def save_as_minAone(self, savedir='', savefile=None, pathinit=0):
         """
         Save the result of this annealing in minAone data file style.
         """
         if savedir.endswith('/') == False:
             savedir += '/'
         if savefile is None:
-            savefile = savedir + 'D%d_M%d_PATH%d.dat'%(self.D, self.L, self.adolcID)
+            savefile = savedir + 'D%d_M%d_PATH%d.dat'%(self.D, self.L, pathinit)
         else:
             savefile = savedir + savefile
         betaR = self.beta_array.reshape((self.Nbeta,1))
@@ -796,7 +623,7 @@ class Annealer:
         np.savetxt(savefile, savearray)
 
     ############################################################################
-    # AD and minimization functions
+    # AD taping & derivatives
     ############################################################################
     def init_gradA(self):
         """
@@ -845,7 +672,10 @@ class Annealer:
             self.init_jacA()
         return self.A(XP), self.jacA_taped(XP)
 
-    def min_lbfgs_scipy(self, XP0, options):
+    ################################################################################
+    # Minimization functions
+    ################################################################################
+    def min_lbfgs_scipy(self, XP0):
         """
         Minimize f starting from x0 using L-BFGS-B method in scipy.
         This method supports the use of bounds.
@@ -859,7 +689,7 @@ class Annealer:
         print("Beginning optimization...")
         tstart = time.time()
         res = opt.minimize(self.A_gradA_taped, XP0, method='L-BFGS-B', jac=True,
-                           options=options, bounds=self.bounds)
+                           options=self.opt_args, bounds=self.bounds)
         XPmin,status,Amin = res.x, res.status, res.fun
 
         print("Optimization complete!")
@@ -870,7 +700,7 @@ class Annealer:
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_cg_scipy(self, XP0, options):
+    def min_cg_scipy(self, XP0):
         """
         Minimize f starting from x0 using nonlinear CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
@@ -882,8 +712,8 @@ class Annealer:
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
-        res = opt.minimize(self.A_gradA_taped, XP0, method='CG', jac=True,
-                           options=options)
+        res = opt.minimize(self.A_gradA, XP0, method='CG', jac=True,
+                           options=self.opt_args)
         XPmin,status,Amin = res.x, res.status, res.fun
 
         print("Optimization complete!")
@@ -894,7 +724,7 @@ class Annealer:
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_tnc_scipy(self, XP0, options):
+    def min_tnc_scipy(self, XP0):
         """
         Minimize f starting from x0 using Newton-CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
@@ -906,8 +736,8 @@ class Annealer:
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
-        res = opt.minimize(self.A_gradA_taped, XP0, method='TNC', jac=True,
-                           options=options, bounds=self.bounds)
+        res = opt.minimize(self.A_gradA, XP0, method='TNC', jac=True,
+                           options=self.opt_args, bounds=self.bounds)
         XPmin,status,Amin = res.x, res.status, res.fun
 
         print("Optimization complete!")
@@ -918,20 +748,20 @@ class Annealer:
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_lm_scipy(self, XP0, options):
+    def min_lm_scipy(self, XP0):
         """
         Minimize f starting from x0 using Levenberg-Marquardt in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
-        if 'jacA' not in self.taped:
-            self.init_jacA()
+        if 'A_jacA' not in self.taped:
+            self.init_A_jacA()
 
         # start the optimization
         print("Beginning optimization...")
         tstart = time.time()
         res = opt.root(self.A_jacA_taped, XP0, method='lm', jac=True,
-                       options=options)
+                       options=self.opt_args)
 
         XPmin,status,Amin = res.x, res.status, res.fun
 
