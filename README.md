@@ -1,7 +1,7 @@
-# varanneal
+# VarAnneal
 
 ### Overview
-varanneal is a Python module that uses the variational annealing (VA) algorithm introduced by Ye et. al. in [1] to 
+VarAnneal is a Python module that uses the variational annealing (VA) algorithm introduced by Ye et. al. in [1] to 
 perform state and parameter estimation in partially observed dynamical systems.  This method requires optimization 
 of a cost function that balances measurement error (deviations of state estimates from observations) and model error 
 (deviations of trajectories from the assumed dynamical behavior given a state and parameter estimate).  Derivatives 
