@@ -47,7 +47,9 @@ class Annealer:
         where x and stim are at the "current" time t.  Thus, x should be a
         D-dimensional vector, and stim similarly a D_stim-dimensional vector.
 
-        Also set static values for the model parameters.
+        Also set values for the model parameters.  If p is a 1D vector, then
+        the parameters are treated as static values.  If it is a length-N
+        time series, then the parameters are treated as time-dependent.
         Later, you can set which parameters are to be estimated during the 
         annealing when the anneal functions are called.
         """
@@ -296,33 +298,54 @@ class Annealer:
     ############################################################################
     # Discretization routines
     ############################################################################
+    def disc_euler(self, x, p):
+        """
+        Euler's method for time discretization of f.
+        """
+        if self.stim is None:
+            pn = p
+        else:
+            pn = (p, self.stim[:-1])
+
+        return self.dt * self.f(self.t[:-1], x[:-1], pn)
+
     def disc_trapezoid(self, x, p):
         """
         Time discretization for the action using the trapezoid rule.
         """
-        if self.stim is not None:
-            pn = (p, self.stim[:-1])
-            pnp1 = (p, self.stim[1:])
-        else:
+        if self.stim is None:
             pn = p
             pnp1 = p
+        else:
+            pn = (p, self.stim[:-1])
+            pnp1 = (p, self.stim[1:])
 
         fn = self.f(self.t[:-1], x[:-1], pn)
         fnp1 = self.f(self.t[1:], x[1:], pnp1)
 
         return self.dt * (fn + fnp1) / 2.0
 
-    def disc_rk4(self, x, p):
-        """
-        RK4 time discretization for the action.
-        """
-        xn = x[:-1]
-        tn = np.tile(self.t[:-1], (self.D, 1)).T
-        k1 = self.f(tn, xn, p)
-        k2 = self.f(tn + self.dt/2.0, xn + k1*self.dt/2.0, p)
-        k3 = self.f(tn + self.dt/2.0, xn + k2*self.dt/2.0, p)
-        k4 = self.f(tn + self.dt, xn + k3*self.dt, p)
-        return self.dt * (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
+# Don't use RK4 yet, still trying to decide how to implement with a stimulus.
+#    def disc_rk4(self, x, p):
+#        """
+#        RK4 time discretization for the action.
+#        """
+#        if self.stim is None:
+#            pn = p
+#            pmid = p
+#            pnp1 = p
+#        else:
+#            pn = (p, self.stim[:-2:2])
+#            pmid = (p, self.stim[1:-1:2])
+#            pnp1 = (p, self.stim[2::2])
+#
+#        xn = x[:-1]
+#        tn = np.tile(self.t[:-1], (self.D, 1)).T
+#        k1 = self.f(tn, xn, pn)
+#        k2 = self.f(tn + self.dt/2.0, xn + k1*self.dt/2.0, pmid)
+#        k3 = self.f(tn + self.dt/2.0, xn + k2*self.dt/2.0, pmid)
+#        k4 = self.f(tn + self.dt, xn + k3*self.dt, pnp1)
+#        return self.dt * (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
 
     def disc_SimpsonHermite(self, x, p):
         """
@@ -331,23 +354,19 @@ class Annealer:
         points, and a Hermite polynomial interpolation for the odd-index points
         in between.
         """
-        if self.stim is not None:
-            pn = (p, self.stim[:-2:2])
-            pmid = (p, self.stim[1:-1:2])
-            pnp1 = (p, self.stim[2::2])
-        else:
+        if self.stim is None:
             pn = p
             pmid = p
             pnp1 = p
+        else:
+            pn = (p, self.stim[:-2:2])
+            pmid = (p, self.stim[1:-1:2])
+            pnp1 = (p, self.stim[2::2])
 
         fn = self.f(self.t[:-2:2], x[:-2:2], pn)
         fmid = self.f(self.t[1:-1:2], x[1:-1:2], pmid)
         fnp1 = self.f(self.t[2::2], x[2::2], pnp1)
 
-        #disc_vec = np.zeros((self.N - 1, self.D), dtype="object")
-        #disc_vec = np.zeros((self.N - 1, self.D), dtype=x.dtype)
-        #disc_vec[:-1:2] = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
-        #disc_vec[1::2] = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
         disc_vec1 = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
         disc_vec2 = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
 
