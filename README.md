@@ -8,6 +8,10 @@ of a cost function that balances measurement error (deviations of state estimate
 of the cost function are computed using automatic differentiation (AD) using pyadolc<sup>[2]</sup>, a Python wrapper around 
 ADOL-C.
 
+### Install
+VarAnneal requires you have the following software installed on your computer:
+1. 
+
 ### References
 [1] J. Ye, N. Kadakia, P. Rozdeba, H.D.I. Abarbanel, and J.C. Quinn.  *Improved  variational methods in 
 statistical data assimilation.*  Nonlin. Proc. Geophys. **22**, 205-213 (2015).
