@@ -37,7 +37,7 @@ class Annealer:
         self.taped = False
         self.annealing_initialized = False
 
-    def set_model(self, f, p, D):
+    def set_model(self, f, D):
         """
         Set the D-dimensional dynamical model for the estimated system.
         The model must take arguments in the following order:
@@ -54,10 +54,7 @@ class Annealer:
         annealing when the anneal functions are called.
         """
         self.f = f
-        self.P = p
         self.D = D
-
-        self.NP = len(p)
 
     def set_data_fromfile(self, data_file, dt, stim_file=None):
         """
@@ -72,6 +69,7 @@ class Annealer:
             data = np.load(data_file)
         else:
             data = np.loadtxt(data_file)
+        self.t = data[:, 0]
         self.Y = data[:, 1:]
 
         if stim_file.endswith('npy'):
@@ -152,18 +150,34 @@ class Annealer:
             x = np.reshape(XP, (self.N, self.D))
             p = self.P
         elif self.NPest == self.NP:
-            x = np.reshape(XP[:-self.NP], (self.N, self.D))
-            p = XP[-self.NP:]
+            x = np.reshape(XP[:self.N*self.D], (self.N, self.D))
+            if self.P.ndim == 1:
+                p = XP[self.N*self.D:]
+            else:
+                p = np.reshape(XP[self.N*self.D:], (self.N, self.NPest))
         else:
-            x = np.reshape(XP[:-self.NPest], (self.N, self.D))
+            x = np.reshape(XP[:self.N*self.D], (self.N, self.D))
             p = []
-            j = self.NPest
-            for i in xrange(self.NP):
-                if i in self.Pidx:
-                    p.append(XP[-j])
-                    j -= 1
-                else:
-                    p.append(self.P[i])
+            if self.P.ndim == 1:
+                j = self.NPest
+                for i in xrange(self.NP):
+                    if i in self.Pidx:
+                        p.append(XP[-j])
+                        j -= 1
+                    else:
+                        p.append(self.P[i])
+            else:
+                j = self.N * self.NPest
+                for n in xrange(self.N):
+                    pn = []
+                    for i in xrange(self.NP):
+                        if i in self.Pidx:
+                            pn.append(XP[-j])
+                            j -= 1
+                        else:
+                            pn.append(self.P[n, i])
+                    p.append(pn)
+        p = np.array(p)
 
         # Start calculating the model error.
         if self.disc.im_func.__name__ == "disc_SimpsonHermite":
@@ -303,9 +317,15 @@ class Annealer:
         Euler's method for time discretization of f.
         """
         if self.stim is None:
-            pn = p
+            if self.P.ndim == 1:
+                pn = p
+            else:
+                pn = p[:-1]
         else:
-            pn = (p, self.stim[:-1])
+            if self.P.ndim == 1:
+                pn = (p, self.stim[:-1])
+            else:
+                pn = (p[:-1], self.stim[:-1])
 
         return self.dt * self.f(self.t[:-1], x[:-1], pn)
 
@@ -314,11 +334,19 @@ class Annealer:
         Time discretization for the action using the trapezoid rule.
         """
         if self.stim is None:
-            pn = p
-            pnp1 = p
+            if self.P.ndim == 1:
+                pn = p
+                pnp1 = p
+            else:
+                pn = p[:-1]
+                pnp1 = p[1:]
         else:
-            pn = (p, self.stim[:-1])
-            pnp1 = (p, self.stim[1:])
+            if self.P.ndim == 1:
+                pn = (p, self.stim[:-1])
+                pnp1 = (p, self.stim[1:])
+            else:
+                pn = (p[:-1], self.stim[:-1])
+                pnp1 = (p[1:], self.stim[1:])
 
         fn = self.f(self.t[:-1], x[:-1], pn)
         fnp1 = self.f(self.t[1:], x[1:], pnp1)
@@ -355,13 +383,23 @@ class Annealer:
         in between.
         """
         if self.stim is None:
-            pn = p
-            pmid = p
-            pnp1 = p
+            if self.P.ndim == 1:
+                pn = p
+                pmid = p
+                pnp1 = p
+            else:
+                pn = p[:-2:2]
+                pmid = p[1:-1:2]
+                pnp1 = p[2::2]
         else:
-            pn = (p, self.stim[:-2:2])
-            pmid = (p, self.stim[1:-1:2])
-            pnp1 = (p, self.stim[2::2])
+            if self.P.ndim == 1:
+                pn = (p, self.stim[:-2:2])
+                pmid = (p, self.stim[1:-1:2])
+                pnp1 = (p, self.stim[2::2])
+            else:
+                pn = (p[:-2:2], self.stim[:-2:2])
+                pmid = (p[1:-1:2], self.stim[1:-1:2])
+                pnp1 = (p[2::2], self.stim[2::2])
 
         fn = self.f(self.t[:-2:2], x[:-2:2], pn)
         fmid = self.f(self.t[1:-1:2], x[1:-1:2], pmid)
@@ -375,7 +413,7 @@ class Annealer:
     ############################################################################
     # Annealing functions
     ############################################################################
-    def anneal(self, XP0, alpha, beta_array, RM, RF0, Lidx, Pidx, 
+    def anneal(self, p0, alpha, beta_array, RM, RF0, Lidx, Pidx, x0=None,
                init_to_data=True, action='A_gaussian', disc='trapezoid',
                method='L-BFGS-B', bounds=None, opt_args=None, adolcID=0):
         """
@@ -384,7 +422,7 @@ class Annealer:
         """
         # initialize the annealing procedure, if not already done
         if self.annealing_initialized == False:
-            self.anneal_init(XP0, alpha, beta_array, RM, RF0, Lidx, Pidx,
+            self.anneal_init(p0, alpha, beta_array, RM, RF0, Lidx, Pidx, x0,
                              init_to_data, action, disc, method, bounds,
                              opt_args, adolcID)
         for i in beta_array:
@@ -394,7 +432,7 @@ class Annealer:
             print('')
             self.anneal_step()
 
-    def anneal_init(self, XP0, alpha, beta_array, RM, RF0, Lidx, Pidx, 
+    def anneal_init(self, p0, alpha, beta_array, RM, RF0, Lidx, Pidx, x0=None,
                     init_to_data=True, action='A_gaussian', disc='trapezoid',
                     method='L-BFGS-B', bounds=None, opt_args=None, adolcID=0):
         """
@@ -416,22 +454,42 @@ class Annealer:
         # get optimization extra arguments
         self.opt_args = opt_args
 
-        # get indices of measured components of f
-        self.Lidx = Lidx
-        self.L = len(Lidx)
+        # set up parameters and determine if static or time series
+        self.P = p0
+        if p0.ndim == 1:
+            # Static parameters, so p is a single vector.
+            self.NP = len(p0)
+        else:
+            # Time-dependent parameters, so p is a time series of N values.
+            self.NP = p0.shape[1]
+
         # get indices of parameters to be estimated by annealing
         self.Pidx = Pidx
         self.NPest = len(Pidx)
+
+        # get indices of measured components of f
+        self.Lidx = Lidx
+        self.L = len(Lidx)
 
         # properly set up the bounds arrays
         if bounds is not None:
             bounds_full = []
             state_b = bounds[:self.D]
-            for i in range(self.N):
-                for j in range(self.D):
-                    bounds_full.append(state_b[j])
-            for i in range(self.NPest):
-                bounds_full.append(bounds[self.D + i])
+            param_b = bounds[self.D:]
+            # set bounds on states for all N time points
+            for n in xrange(self.N):
+                for i in xrange(self.D):
+                    bounds_full.append(state_b[i])
+            # set bounds on parameters
+            if self.P.ndim == 1:
+                # parameters are static
+                for i in xrange(self.NPest):
+                    bounds_full.append(param_b[i])
+            else:
+                # parameters are time-dependent
+                for n in xrange(self.N):
+                    for i in xrange(self.NPest):
+                        bounds_full.append(param_b[i])
         else:
             bounds_full = None
 
@@ -492,22 +550,34 @@ class Annealer:
         exec 'self.disc = self.disc_%s'%(disc,)
 
         # array to store minimizing paths
-        self.minpaths = np.zeros((self.Nbeta, len(XP0)), dtype='float')
+        if p0.ndim == 1:
+            self.minpaths = np.zeros((self.Nbeta, self.N*self.D + self.NP), dtype=np.float64)
+        else:
+            self.minpaths = np.zeros((self.Nbeta, self.N*(self.D + self.NP)), dtype=np.float64)
+
+        # initialize the full path vector
+        if x0 == None:
+            print("Error! x0 not specified. Annealing not initialized.")
+            return 1
+
         if init_to_data == True:
-            X0r = np.reshape(XP0[:self.N*self.D], (self.N, self.D))
-            X0r[:, self.Lidx] = self.Y[:]
-            if self.NPest > 0:
-                P0 = XP0[-self.NPest:]
-                XP0 = np.append(X0r.flatten(), P0)
+            x0[:, self.Lidx] = self.Y[:]
+
+        if self.NPest > 0:
+            if p0.ndim == 1:
+                XP0 = np.append(x0.flatten(), p0)
             else:
-                XP0 = X0r.flatten()
+                XP0 = np.append(x0.flatten(), p0.flatten())
+        else:
+            XP0 = x0.flatten()
+
         self.minpaths[0] = XP0
 
         # array to store optimization results
-        self.A_array = np.zeros(self.Nbeta, dtype='float')
-        self.me_array = np.zeros(self.Nbeta, dtype='float')
-        self.fe_array = np.zeros(self.Nbeta, dtype='float')
-        self.exitflags = np.empty(self.Nbeta, dtype='int')
+        self.A_array = np.zeros(self.Nbeta, dtype=np.float64)
+        self.me_array = np.zeros(self.Nbeta, dtype=np.float64)
+        self.fe_array = np.zeros(self.Nbeta, dtype=np.float64)
+        self.exitflags = np.empty(self.Nbeta, dtype=np.int8)
 
         # set the adolcID
         self.adolcID = adolcID
@@ -551,10 +621,19 @@ class Annealer:
 
         # update optimal parameter values
         if self.NPest > 0:
-            if isinstance(XPmin[0], adolc._adolc.adouble):
-                self.P[self.Pidx] = np.array([XPmin[-self.NPest + i].val for i in xrange(self.NPest)])
+            if self.P.ndim == 1:
+                if isinstance(XPmin[0], adolc._adolc.adouble):
+                    self.P[self.Pidx] = np.array([XPmin[-self.NPest + i].val \
+                                                  for i in xrange(self.NPest)])
+                else:
+                    self.P[self.Pidx] = np.copy(XPmin[-self.NPest:])
             else:
-                self.P[self.Pidx] = np.copy(XPmin[-self.NPest:])
+                for n in xrange(self.N):
+                    if isinstance(XPmin[0], adolc._adolc.adouble):
+                        self.P[n, self.Pidx] = np.array([XPmin[-(self.N-n-1)*self.NPest + i].val\
+                                                         for i in xrange(self.NPest)])
+                    else:
+                        self.P[n, self.Pidx] = np.copy(XPmin[(self.N-n-1)*self.NPest:])
 
         # store A_min and the minimizing path
         self.A_array[self.betaidx] = Amin
@@ -582,10 +661,7 @@ class Annealer:
         """
         Save minimizing paths (not including parameters).
         """
-        if self.NPest == 0:
-            savearray = np.reshape(self.minpaths[:], (self.Nbeta, self.N, self.D))
-        else:
-            savearray = np.reshape(self.minpaths[:, :-self.NPest], (self.Nbeta, self.N, self.D))
+        savearray = np.reshape(self.minpaths[:, :self.N*self.D], (self.Nbeta, self.N, self.D))
 
         # append time
         tsave = np.reshape(self.t, (self.N, 1))
@@ -606,11 +682,19 @@ class Annealer:
                   + "parameter values to file anyway.")
 
         # write fixed parameters to array
-        savearray = np.resize(self.P, (self.Nbeta, self.NP))
+        if self.P.ndim == 1:
+            savearray = np.resize(self.P, (self.Nbeta, self.NP))
+        else:
+            savearray = np.resize(self.P, (self.Nbeta, self.N, self.NP))
         # write estimated parameters to array
         if self.NPest > 0:
-            est_param_array = np.reshape(self.minpaths[:, -self.NPest:], (self.Nbeta, self.NPest))
-            savearray[:, self.Pidx] = est_param_array
+            if self.P.ndim == 1:
+                est_param_array = self.minpaths[:, self.N*self.D:]
+                savearray[:, self.Pidx] = est_param_array
+            else:
+                est_param_array = np.reshape(self.minpaths[:, self.N*self.D:],
+                                             (self.Nbeta, self.N, self.NPest))
+                savearray[:, :, self.Pidx] = est_param_array
 
         if filename.endswith('.npy'):
             np.save(filename, savearray)

@@ -17,14 +17,14 @@ def l96(t, x, k):
 D = 20
 
 # Action/annealing parameters
+# Measured variable indices
 Lidx = [0, 2, 4, 8, 10, 12, 14, 16]
-L = len(Lidx)
-# RM, RF
+# RM, RF0
 RM = 1.0 / (0.5**2)
 RF0 = 4.0e-6
-# set alpha and beta values
+# alpha, and beta ladder
 alpha = 1.5
-beta_array = np.linspace(0.0, 100.0, 101)
+beta_array = np.linspace(0, 100, 101)
 
 # Load observed data
 data = np.load("l96_D20_dt0p025_N161_sm0p5_sec1_mem1.npy")
