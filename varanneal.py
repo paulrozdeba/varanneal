@@ -56,7 +56,7 @@ class Annealer:
         self.f = f
         self.D = D
 
-    def set_data_fromfile(self, data_file, dt, stim_file=None):
+    def set_data_fromfile(self, data_file, stim_file=None):
         """
         Load data & stimulus time series from file.
         If data is a text file, must be in multi-column format with L+1 columns:
@@ -69,7 +69,8 @@ class Annealer:
             data = np.load(data_file)
         else:
             data = np.loadtxt(data_file)
-        self.t = data[:, 0]
+        self.t_data = data[:, 0]
+        self.dt_data = self.t_data[1] - self.t_data[0]
         self.Y = data[:, 1:]
 
         if stim_file.endswith('npy'):
@@ -78,35 +79,35 @@ class Annealer:
             s = np.loadtxt(stim_file)
         self.stim = s[:, 1:]
 
-        self.dt = dt
+        self.dt_data = dt_data
 
-    def set_data(self, data, dt, stim=None, t=None, nstart=0, N=None):
+    def set_data(self, data, stim=None, t=None, nstart=0, N=None):
         """
         Directly pass in data and stim arrays
         If you pass in t, it's assumed y/stim does not contain time.  Otherwise,
         it has to contain time in the zeroth element of each sample.
         """
         if N is None:
-            self.N = data.shape[0]
+            self.N_data = data.shape[0]
         else:
-            self.N = N
+            self.N_data = N
 
         if t is None:
-            self.t = data[nstart:(nstart + self.N), 0]
-            self.Y = data[nstart:(nstart + self.N), 1:]
+            self.t_data = data[nstart:(nstart + self.N_data), 0]
+            self.dt_data = self.t_data[1] - self.t_data[0]
+            self.Y = data[nstart:(nstart + self.N_data), 1:]
             if stim is not None:
-                self.stim = stim[nstart:(nstart + self.N), 1:]
+                self.stim = stim[nstart:(nstart + self.N_data), 1:]
             else:
                 self.stim = None
         else:
-            self.t = t[nstart:(nstart + self.N)]
-            self.Y = data[nstart:(nstart + self.N)]
+            self.t_data = t[nstart:(nstart + self.N_data)]
+            self.dt_data = self.t_data[1] - self.t_data[0]
+            self.Y = data[nstart:(nstart + self.N_data)]
             if stim is not None:
-                self.stim = stim[nstart:(nstart + self.N)]
+                self.stim = stim[nstart:(nstart + self.N_data)]
             else:
                 self.stim = None
-
-        self.dt = dt
 
     ############################################################################
     # Gaussian action
@@ -115,7 +116,7 @@ class Annealer:
         """
         Calculate the Gaussian action all in one go.
         """
-        merr = self.me_gaussian(XP[:self.N*self.D])
+        merr = self.me_gaussian(XP[:self.N_model*self.D])
         ferr = self.fe_gaussian(XP)
         return merr + ferr
 
@@ -123,23 +124,23 @@ class Annealer:
         """
         Gaussian measurement error.
         """
-        x = np.reshape(X, (self.N, self.D))
-        diff = x[:, self.Lidx] - self.Y
+        x = np.reshape(X, (self.N_model, self.D))
+        diff = x[::self.merr_nskip, self.Lidx] - self.Y
 
         if type(self.RM) == np.ndarray:
             # Contract RM with error
-            if self.RM.shape == (self.N, self.L):
+            if self.RM.shape == (self.N_data, self.L):
                 merr = np.sum(self.RM * diff * diff)
-            elif self.RM.shape == (self.N, self.L, self.L):
+            elif self.RM.shape == (self.N_data, self.L, self.L):
                 merr = 0.0
-                for i in xrange(self.N):
+                for i in xrange(self.N_data):
                     merr = merr + np.dot(diff[i], np.dot(self.RM[i], diff[i]))
             else:
                 print("ERROR: RM is in an invalid shape.")
         else:
             merr = self.RM * np.sum(diff * diff)
 
-        return merr / (self.L * self.N)
+        return merr / (self.L * self.N_data)
 
     def fe_gaussian(self, XP):
         """
@@ -147,16 +148,16 @@ class Annealer:
         """
         # Extract state and parameters from XP.
         if self.NPest == 0:
-            x = np.reshape(XP, (self.N, self.D))
+            x = np.reshape(XP, (self.N_model, self.D))
             p = self.P
         elif self.NPest == self.NP:
-            x = np.reshape(XP[:self.N*self.D], (self.N, self.D))
+            x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
             if self.P.ndim == 1:
-                p = XP[self.N*self.D:]
+                p = XP[self.N_model*self.D:]
             else:
-                p = np.reshape(XP[self.N*self.D:], (self.N, self.NPest))
+                p = np.reshape(XP[self.N_model*self.D:], (self.N_model, self.NPest))
         else:
-            x = np.reshape(XP[:self.N*self.D], (self.N, self.D))
+            x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
             p = []
             if self.P.ndim == 1:
                 j = self.NPest
@@ -167,8 +168,8 @@ class Annealer:
                     else:
                         p.append(self.P[i])
             else:
-                j = self.N * self.NPest
-                for n in xrange(self.N):
+                j = self.N_model * self.NPest
+                for n in xrange(self.N_model):
                     pn = []
                     for i in xrange(self.NP):
                         if i in self.Pidx:
@@ -190,7 +191,7 @@ class Annealer:
 
         if type(self.RF) == np.ndarray:
             # Contract RF with the model error time series terms
-            if self.RF.shape == (self.N - 1, self.D):
+            if self.RF.shape == (self.N_model - 1, self.D):
                 if self.disc.im_func.__name__ == "disc_SimpsonHermite":
                     ferr1 = np.sum(self.RF[::2] * diff1 * diff1)
                     ferr2 = np.sum(self.RF[1::2] * diff2 * diff2)
@@ -198,17 +199,17 @@ class Annealer:
                 else:
                     ferr = np.sum(self.RF * diff * diff)
 
-            elif self.RF.shape == (self.N - 1, self.D, self.D):
+            elif self.RF.shape == (self.N_model - 1, self.D, self.D):
                 if self.disc.im_func.__name__ == "disc_SimpsonHermite":
                     ferr1 = 0.0
                     ferr2 = 0.0
-                    for i in xrange((self.N - 1) / 2):
+                    for i in xrange((self.N_model - 1) / 2):
                         ferr1 = ferr1 + np.dot(diff1[i], np.dot(self.RF[2*i], diff1[i]))
                         ferr2 = ferr2 + np.dot(diff2[i], np.dot(self.RF[2*i+1], diff2[i]))
                     ferr = ferr1 + ferr2
                 else:
                     ferr = 0.0
-                    for i in xrange(self.N - 1):
+                    for i in xrange(self.N_model - 1):
                         ferr = ferr + np.dot(diff[i], np.dot(self.RF[i], diff))
 
             else:
@@ -222,34 +223,49 @@ class Annealer:
             else:
                 ferr = self.RF * np.sum(diff * diff)
 
-        return ferr / (self.D * (self.N - 1))
+        return ferr / (self.D * (self.N_model - 1))
 
     def vecA_gaussian(self, XP):
         """
         Vector-like terms of the Gaussian action.
         This is here primarily for Levenberg-Marquardt.
         """
-        # Extract state and parameters from XP
         if self.NPest == 0:
-            x = np.reshape(XP, (self.N, self.D))
+            x = np.reshape(XP, (self.N_model, self.D))
             p = self.P
         elif self.NPest == self.NP:
-            x = np.reshape(XP[:-self.NP], (self.N, self.D))
-            p = XP[-self.NP:]
+            x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
+            if self.P.ndim == 1:
+                p = XP[self.N_model*self.D:]
+            else:
+                p = np.reshape(XP[self.N_model*self.D:], (self.N_model, self.NPest))
         else:
-            x = np.reshape(XP[:-self.NPest], (self.N, self.D))
+            x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
             p = []
-            j = self.NPest
-            for i in xrange(self.NP):
-                if i in self.Pidx:
-                    p.append(XP[-j])
-                    j -= 1
-                else:
-                    p.append(self.P[i])
+            if self.P.ndim == 1:
+                j = self.NPest
+                for i in xrange(self.NP):
+                    if i in self.Pidx:
+                        p.append(XP[-j])
+                        j -= 1
+                    else:
+                        p.append(self.P[i])
+            else:
+                j = self.N_model * self.NPest
+                for n in xrange(self.N_model):
+                    pn = []
+                    for i in xrange(self.NP):
+                        if i in self.Pidx:
+                            pn.append(XP[-j])
+                            j -= 1
+                        else:
+                            pn.append(self.P[n, i])
+                    p.append(pn)
+        p = np.array(p)
 
         # Evaluate the vector-like terms of the action.
         # Measurement error
-        diff = x[:, self.Lidx] - self.Y
+        diff = x[::self.merr_nskip, self.Lidx] - self.Y
 
         if type(self.RM) == np.ndarray:
             # Contract RM with error
@@ -327,7 +343,7 @@ class Annealer:
             else:
                 pn = (p[:-1], self.stim[:-1])
 
-        return self.dt * self.f(self.t[:-1], x[:-1], pn)
+        return self.dt_model * self.f(self.t_model[:-1], x[:-1], pn)
 
     def disc_trapezoid(self, x, p):
         """
@@ -348,10 +364,10 @@ class Annealer:
                 pn = (p[:-1], self.stim[:-1])
                 pnp1 = (p[1:], self.stim[1:])
 
-        fn = self.f(self.t[:-1], x[:-1], pn)
-        fnp1 = self.f(self.t[1:], x[1:], pnp1)
+        fn = self.f(self.t_model[:-1], x[:-1], pn)
+        fnp1 = self.f(self.t_model[1:], x[1:], pnp1)
 
-        return self.dt * (fn + fnp1) / 2.0
+        return self.dt_model * (fn + fnp1) / 2.0
 
 # Don't use RK4 yet, still trying to decide how to implement with a stimulus.
 #    def disc_rk4(self, x, p):
@@ -401,20 +417,20 @@ class Annealer:
                 pmid = (p[1:-1:2], self.stim[1:-1:2])
                 pnp1 = (p[2::2], self.stim[2::2])
 
-        fn = self.f(self.t[:-2:2], x[:-2:2], pn)
-        fmid = self.f(self.t[1:-1:2], x[1:-1:2], pmid)
-        fnp1 = self.f(self.t[2::2], x[2::2], pnp1)
+        fn = self.f(self.t_model[:-2:2], x[:-2:2], pn)
+        fmid = self.f(self.t_model[1:-1:2], x[1:-1:2], pmid)
+        fnp1 = self.f(self.t_model[2::2], x[2::2], pnp1)
 
-        disc_vec1 = (fn + 4.0*fmid + fnp1) * (2.0*self.dt)/6.0
-        disc_vec2 = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt)/8.0
+        disc_vec1 = (fn + 4.0*fmid + fnp1) * (2.0*self.dt_model)/6.0
+        disc_vec2 = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt_model)/8.0
 
         return disc_vec1, disc_vec2
 
     ############################################################################
     # Annealing functions
     ############################################################################
-    def anneal(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx,
-               init_to_data=True, action='A_gaussian', disc='trapezoid',
+    def anneal(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, dt_model=None,
+               init_to_data=True, action='A_gaussian', disc='trapezoid', 
                method='L-BFGS-B', bounds=None, opt_args=None, adolcID=0):
         """
         Convenience function to carry out a full annealing run over all values
@@ -422,7 +438,7 @@ class Annealer:
         """
         # initialize the annealing procedure, if not already done
         if self.annealing_initialized == False:
-            self.anneal_init(X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx,
+            self.anneal_init(X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, dt_model,
                              init_to_data, action, disc, method, bounds,
                              opt_args, adolcID)
         for i in beta_array:
@@ -432,7 +448,7 @@ class Annealer:
             print('')
             self.anneal_step()
 
-    def anneal_init(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx,
+    def anneal_init(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, dt_model=None,
                     init_to_data=True, action='A_gaussian', disc='trapezoid',
                     method='L-BFGS-B', bounds=None, opt_args=None, adolcID=0):
         """
@@ -443,6 +459,23 @@ class Annealer:
             return 1
         else:
             self.method = method
+
+        # Separate dt_data and dt_model not supported yet if there is an external stimulus.
+        if (dt_model is not None or dt_model != self.dt_data) and self.stim is not None:
+            print("Error! Separate dt_data and dt_model currently not supported with an " +\
+                  "external stimulus. Exiting.")
+            exit(1)
+        else:
+            if dt_model is None:
+                self.dt_model = self.dt_data
+                self.N_model = self.N_data
+                self.merr_nskip = 1
+                self.t_model = np.copy(self.t_data)
+            else:
+                self.dt_model = dt_model
+                self.merr_nskip = int(self.dt_data / self.dt_model)
+                self.N_model = (self.N_data - 1) * self.merr_nskip + 1
+                self.t_model = np.linspace(self.t_data[0], self.t_data[-1], self.N_model)
 
         # Store optimization bounds. Will only be used if the chosen
         # optimization routine supports it.
@@ -477,7 +510,7 @@ class Annealer:
             state_b = bounds[:self.D]
             param_b = bounds[self.D:]
             # set bounds on states for all N time points
-            for n in xrange(self.N):
+            for n in xrange(self.N_model):
                 for i in xrange(self.D):
                     bounds_full.append(state_b[i])
             # set bounds on parameters
@@ -487,7 +520,7 @@ class Annealer:
                     bounds_full.append(param_b[i])
             else:
                 # parameters are time-dependent
-                for n in xrange(self.N):
+                for n in xrange(self.N_model):
                     for i in xrange(self.NPest):
                         bounds_full.append(param_b[i])
         else:
@@ -498,29 +531,29 @@ class Annealer:
         # numpy handle multiplication over time rather than using python loops.
         if type(RM) == np.ndarray:
             if RM.shape == (self.L,):
-                self.RM = np.resize(RM, (self.N, self.L))
+                self.RM = np.resize(RM, (self.N_data, self.L))
             elif RM.shape == (self.L, self.L):
-                self.RM = np.resize(RM, (self.N, self.L, self.L))
-            elif RM.shape == (self.N, self.L) or RM.shape == np.resize(self.N, self.L, self.L):
+                self.RM = np.resize(RM, (self.N_data, self.L, self.L))
+            elif RM.shape == (self.N_data, self.L) or \
+                 RM.shape == np.resize(self.N_data, self.L, self.L):
                 self.RM = RM
             else:
                 print("ERROR: RM has an invalid shape. Exiting.")
                 exit(1)
-
         else:
             self.RM = RM
 
         if type(RF0) == np.ndarray:
             if RF0.shape == (self.D,):
-                self.RF0 = np.resize(RF0, (self.N - 1, self.D))
+                self.RF0 = np.resize(RF0, (self.N_model - 1, self.D))
             elif RF0.shape == (self.D, self.D):
-                self.RF0 = np.resize(RF0, (self.N - 1, self.D, self.D))
-            elif RF0.shape == (self.N - 1, self.D) or RF0.shape == (self.N - 1, self.D, self.D):
+                self.RF0 = np.resize(RF0, (self.N_model - 1, self.D, self.D))
+            elif RF0.shape == (self.N_model - 1, self.D) or \
+                 RF0.shape == (self.N_model - 1, self.D, self.D):
                 self.RF0 = RF0
             else:
                 print("ERROR: RF0 has an invalid shape. Exiting.")
                 exit(1)
-
         else:
             self.RF0 = RF0
 
@@ -551,13 +584,13 @@ class Annealer:
 
         # array to store minimizing paths
         if P0.ndim == 1:
-            self.minpaths = np.zeros((self.Nbeta, self.N*self.D + self.NP), dtype=np.float64)
+            self.minpaths = np.zeros((self.Nbeta, self.N_model*self.D + self.NP), dtype=np.float64)
         else:
-            self.minpaths = np.zeros((self.Nbeta, self.N*(self.D + self.NP)), dtype=np.float64)
+            self.minpaths = np.zeros((self.Nbeta, self.N_model*(self.D + self.NP)), dtype=np.float64)
 
         # initialize observed state components to data if desired
         if init_to_data == True:
-            X0[:, self.Lidx] = self.Y[:]
+            X0[::self.merr_nskip, self.Lidx] = self.Y[:]
 
         if self.NPest > 0:
             if P0.ndim == 1:
@@ -624,18 +657,19 @@ class Annealer:
                 else:
                     self.P[self.Pidx] = np.copy(XPmin[-self.NPest:])
             else:
-                for n in xrange(self.N):
+                for n in xrange(self.N_model):
                     if isinstance(XPmin[0], adolc._adolc.adouble):
-                        self.P[n, self.Pidx] = np.array([XPmin[-(self.N-n-1)*self.NPest + i].val\
+                        nidx = self.N_model - n - 1
+                        self.P[n, self.Pidx] = np.array([XPmin[-nidx*self.NPest + i].val \
                                                          for i in xrange(self.NPest)])
                     else:
-                        pi1 = self.N*self.D + n*self.NPest
-                        pi2 = self.N*self.D + (n+1)*self.NPest
+                        pi1 = self.N_model*self.D + n*self.NPest
+                        pi2 = self.N_model*self.D + (n+1)*self.NPest
                         self.P[n, self.Pidx] = np.copy(XPmin[pi1:pi2])
 
         # store A_min and the minimizing path
         self.A_array[self.betaidx] = Amin
-        self.me_array[self.betaidx] = self.me_gaussian(np.array(XPmin[:self.N*self.D]))
+        self.me_array[self.betaidx] = self.me_gaussian(np.array(XPmin[:self.N_model*self.D]))
         self.fe_array[self.betaidx] = self.fe_gaussian(np.array(XPmin))
         self.minpaths[self.betaidx] = np.array(XPmin)
 
@@ -659,11 +693,12 @@ class Annealer:
         """
         Save minimizing paths (not including parameters).
         """
-        savearray = np.reshape(self.minpaths[:, :self.N*self.D], (self.Nbeta, self.N, self.D))
+        savearray = np.reshape(self.minpaths[:, :self.N_model*self.D], \
+                               (self.Nbeta, self.N_model, self.D))
 
         # append time
-        tsave = np.reshape(self.t, (self.N, 1))
-        tsave = np.resize(tsave, (self.Nbeta, self.N, 1))
+        tsave = np.reshape(self.t_model, (self.N_model, 1))
+        tsave = np.resize(tsave, (self.Nbeta, self.N_model, 1))
         savearray = np.dstack((tsave, savearray))
 
         if filename.endswith('.npy'):
@@ -683,15 +718,15 @@ class Annealer:
         if self.P.ndim == 1:
             savearray = np.resize(self.P, (self.Nbeta, self.NP))
         else:
-            savearray = np.resize(self.P, (self.Nbeta, self.N, self.NP))
+            savearray = np.resize(self.P, (self.Nbeta, self.N_model, self.NP))
         # write estimated parameters to array
         if self.NPest > 0:
             if self.P.ndim == 1:
-                est_param_array = self.minpaths[:, self.N*self.D:]
+                est_param_array = self.minpaths[:, self.N_model*self.D:]
                 savearray[:, self.Pidx] = est_param_array
             else:
-                est_param_array = np.reshape(self.minpaths[:, self.N*self.D:],
-                                             (self.Nbeta, self.N, self.NPest))
+                est_param_array = np.reshape(self.minpaths[:, self.N_model*self.D:],
+                                             (self.Nbeta, self.N_model, self.NPest))
                 savearray[:, :, self.Pidx] = est_param_array
 
         if filename.endswith('.npy'):
@@ -712,9 +747,9 @@ class Annealer:
 
         # Save model error / RF
         if type(self.RF) == np.ndarray:
-            if self.RF0.shape == (self.N - 1, self.D):
+            if self.RF0.shape == (self.N_model - 1, self.D):
                 savearray[:, 4] = self.fe_array / (self.RF0[0, 0] * self.alpha**self.beta_array)
-            elif self.RF0.shape == (self.N - 1, self.D, self.D):
+            elif self.RF0.shape == (self.N_model - 1, self.D, self.D):
                 savearray[:, 4] = self.fe_array / (self.RF0[0, 0, 0] * self.alpha**self.beta_array)
             else:
                 print("RF shape currently not supported for saving.")
@@ -754,9 +789,9 @@ class Annealer:
         tstart = time.time()
         # define a random state vector for the trace
         if self.P.ndim == 1:
-            xtrace = np.random.rand(self.N*self.D + self.NPest)
+            xtrace = np.random.rand(self.N_model*self.D + self.NPest)
         else:
-            xtrace = np.random.rand(self.N*(self.D + self.NPest))
+            xtrace = np.random.rand(self.N_model*(self.D + self.NPest))
         adolc.trace_on(self.adolcID)
         # set the active independent variables
         ax = adolc.adouble(xtrace)
