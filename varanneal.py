@@ -413,7 +413,7 @@ class Annealer:
     ############################################################################
     # Annealing functions
     ############################################################################
-    def anneal(self, p0, alpha, beta_array, RM, RF0, Lidx, Pidx, x0=None,
+    def anneal(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx,
                init_to_data=True, action='A_gaussian', disc='trapezoid',
                method='L-BFGS-B', bounds=None, opt_args=None, adolcID=0):
         """
@@ -422,7 +422,7 @@ class Annealer:
         """
         # initialize the annealing procedure, if not already done
         if self.annealing_initialized == False:
-            self.anneal_init(p0, alpha, beta_array, RM, RF0, Lidx, Pidx, x0,
+            self.anneal_init(X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx,
                              init_to_data, action, disc, method, bounds,
                              opt_args, adolcID)
         for i in beta_array:
@@ -432,7 +432,7 @@ class Annealer:
             print('')
             self.anneal_step()
 
-    def anneal_init(self, p0, alpha, beta_array, RM, RF0, Lidx, Pidx, x0=None,
+    def anneal_init(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx,
                     init_to_data=True, action='A_gaussian', disc='trapezoid',
                     method='L-BFGS-B', bounds=None, opt_args=None, adolcID=0):
         """
@@ -455,13 +455,13 @@ class Annealer:
         self.opt_args = opt_args
 
         # set up parameters and determine if static or time series
-        self.P = p0
-        if p0.ndim == 1:
+        self.P = P0
+        if P0.ndim == 1:
             # Static parameters, so p is a single vector.
-            self.NP = len(p0)
+            self.NP = len(P0)
         else:
             # Time-dependent parameters, so p is a time series of N values.
-            self.NP = p0.shape[1]
+            self.NP = P0.shape[1]
 
         # get indices of parameters to be estimated by annealing
         self.Pidx = Pidx
@@ -550,26 +550,22 @@ class Annealer:
         exec 'self.disc = self.disc_%s'%(disc,)
 
         # array to store minimizing paths
-        if p0.ndim == 1:
+        if P0.ndim == 1:
             self.minpaths = np.zeros((self.Nbeta, self.N*self.D + self.NP), dtype=np.float64)
         else:
             self.minpaths = np.zeros((self.Nbeta, self.N*(self.D + self.NP)), dtype=np.float64)
 
-        # initialize the full path vector
-        if x0 == None:
-            print("Error! x0 not specified. Annealing not initialized.")
-            return 1
-
+        # initialize observed state components to data if desired
         if init_to_data == True:
-            x0[:, self.Lidx] = self.Y[:]
+            X0[:, self.Lidx] = self.Y[:]
 
         if self.NPest > 0:
-            if p0.ndim == 1:
-                XP0 = np.append(x0.flatten(), p0)
+            if P0.ndim == 1:
+                XP0 = np.append(X0.flatten(), P0)
             else:
-                XP0 = np.append(x0.flatten(), p0.flatten())
+                XP0 = np.append(X0.flatten(), P0.flatten())
         else:
-            XP0 = x0.flatten()
+            XP0 = X0.flatten()
 
         self.minpaths[0] = XP0
 
@@ -633,7 +629,9 @@ class Annealer:
                         self.P[n, self.Pidx] = np.array([XPmin[-(self.N-n-1)*self.NPest + i].val\
                                                          for i in xrange(self.NPest)])
                     else:
-                        self.P[n, self.Pidx] = np.copy(XPmin[(self.N-n-1)*self.NPest:])
+                        pi1 = self.N*self.D + n*self.NPest
+                        pi2 = self.N*self.D + (n+1)*self.NPest
+                        self.P[n, self.Pidx] = np.copy(XPmin[pi1:pi2])
 
         # store A_min and the minimizing path
         self.A_array[self.betaidx] = Amin
@@ -755,7 +753,10 @@ class Annealer:
         print('Taping action evaluation...')
         tstart = time.time()
         # define a random state vector for the trace
-        xtrace = np.random.rand(self.D*self.N + self.NPest)
+        if self.P.ndim == 1:
+            xtrace = np.random.rand(self.N*self.D + self.NPest)
+        else:
+            xtrace = np.random.rand(self.N*(self.D + self.NPest))
         adolc.trace_on(self.adolcID)
         # set the active independent variables
         ax = adolc.adouble(xtrace)
@@ -791,7 +792,7 @@ class Annealer:
     ################################################################################
     def min_lbfgs_scipy(self, XP0):
         """
-        Minimize f starting from x0 using L-BFGS-B method in scipy.
+        Minimize f starting from XP0 using L-BFGS-B method in scipy.
         This method supports the use of bounds.
         Returns the minimizing state, the minimum function value, and the L-BFGS
         termination information.
@@ -816,7 +817,7 @@ class Annealer:
 
     def min_cg_scipy(self, XP0):
         """
-        Minimize f starting from x0 using nonlinear CG method in scipy.
+        Minimize f starting from XP0 using nonlinear CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
@@ -840,7 +841,7 @@ class Annealer:
 
     def min_tnc_scipy(self, XP0):
         """
-        Minimize f starting from x0 using Newton-CG method in scipy.
+        Minimize f starting from XP0 using Newton-CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
@@ -864,7 +865,7 @@ class Annealer:
 
     def min_lm_scipy(self, XP0):
         """
-        Minimize f starting from x0 using Levenberg-Marquardt in scipy.
+        Minimize f starting from XP0 using Levenberg-Marquardt in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """

@@ -37,29 +37,30 @@ N = len(times)
 # Initial path/parameter guessees
 data = data[:, 1:]
 data = data[:, Lidx]
-Xinit = (20.0*np.random.rand(N*D) - 10.0).reshape((N,D))
-for i,l in enumerate(Lidx):
-    Xinit[:, l] = data[:, i]
-Xinit = Xinit.flatten()
+X0 = (20.0*np.random.rand(N*D) - 10.0).reshape((N,D))
+# Below lines are for initializing measured components to data; instead, we
+# use the convenience option "init_to_data=True" in the anneal() function below.
+#for i,l in enumerate(Lidx):
+#    Xinit[:, l] = data[:, i]
+#Xinit = Xinit.flatten()
 
 # Parameters
-# For P, we just need something; we'll fill in the initial guess below
-P = np.array([0.0])
 Pidx = [0]  # indices of estimated parameters
-Pinit = 4.0 * np.random.rand() + 6.0  # initial parameter guess
-XP0 = np.append(Xinit, Pinit)
+# Initial guess
+P0 = np.array([4.0 * np.random.rand() + 6.0])  # Static parameter
+#Pinit = 4.0 * np.random.rand(N, 1) + 6.0  # Time-dependent parameter
 
 # Initialize Annealer
 anneal1 = varanneal.Annealer()
 # Define the model
-anneal1.set_model(l96, P, D)
+anneal1.set_model(l96, D)
 # Load the data into the Annealer object
 anneal1.set_data(data, dt, t=times)
+
 # Run the annealing using L-BFGS-B
 BFGS_options = {'gtol':1.0e-12, 'ftol':1.0e-12, 'maxfun':1000000, 'maxiter':1000000}
-
 tstart = time.time()
-anneal1.anneal(XP0, alpha, beta_array, RM, RF0, Lidx, Pidx,
+anneal1.anneal(X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, init_to_data=True,
                disc='SimpsonHermite', method='L-BFGS-B', opt_args=BFGS_options,
                adolcID=0)
 print("\nADOL-C annealing completed in %f s."%(time.time() - tstart))
