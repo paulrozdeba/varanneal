@@ -155,7 +155,10 @@ class Annealer:
             if self.P.ndim == 1:
                 p = XP[self.N_model*self.D:]
             else:
-                p = np.reshape(XP[self.N_model*self.D:], (self.N_model, self.NPest))
+                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                    p = np.reshape(XP[self.N_model*self.D:], (self.N_model - 1, self.NPest))
+                else:
+                    p = np.reshape(XP[self.N_model*self.D:], (self.N_model, self.NPest))
         else:
             x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
             p = []
@@ -168,8 +171,13 @@ class Annealer:
                     else:
                         p.append(self.P[i])
             else:
-                j = self.N_model * self.NPest
-                for n in xrange(self.N_model):
+                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                    j = (self.N_model - 1) * self.NPest
+                    nmax = self.N_model - 1
+                else:
+                    j = self.N_model * self.NPest
+                    nmax = self.N_model
+                for n in xrange(nmax):
                     pn = []
                     for i in xrange(self.NP):
                         if i in self.Pidx:
@@ -186,6 +194,8 @@ class Annealer:
             disc_vec1, disc_vec2 = self.disc(x, p)
             diff1 = x[2::2] - x[:-2:2] - disc_vec1
             diff2 = x[1::2] - disc_vec2
+        elif self.disc.im_func.__name__ == 'disc_forwardmap':
+            diff = x[1:] - self.disc(x, p)
         else:
             diff = x[1:] - x[:-1] - self.disc(x, p)
 
@@ -286,6 +296,8 @@ class Annealer:
             disc_vec1, disc_vec2 = self.disc(x, p)
             diff1 = x[2::2] - x[:-2:2] - disc_vec1
             diff2 = x[1::2] - disc_vec2
+        elif self.disc.im_func.__name__ == 'disc_forwardmap':
+            diff = x[1:] - self.disc(x, p)
         else:
             diff = x[1:] - x[:-1] - self.disc(x, p)
 
@@ -333,15 +345,9 @@ class Annealer:
         Euler's method for time discretization of f.
         """
         if self.stim is None:
-            if self.P.ndim == 1:
-                pn = p
-            else:
-                pn = p[:-1]
+            pn = p
         else:
-            if self.P.ndim == 1:
-                pn = (p, self.stim[:-1])
-            else:
-                pn = (p[:-1], self.stim[:-1])
+            pn = (p, self.stim[:-1])
 
         return self.dt_model * self.f(self.t_model[:-1], x[:-1], pn)
 
@@ -426,6 +432,17 @@ class Annealer:
 
         return disc_vec1, disc_vec2
 
+    def disc_forwardmap(self, x, p):
+        """
+        "Discretization" when f is a forward mapping, not an ODE.
+        """
+        if self.stim is None:
+            pn = p
+        else:
+            pn = (p, self.stim[:-1])
+
+        return self.f(self.t_model[:-1], x[:-1], pn)
+
     ############################################################################
     # Annealing functions
     ############################################################################
@@ -477,13 +494,6 @@ class Annealer:
                 self.N_model = (self.N_data - 1) * self.merr_nskip + 1
                 self.t_model = np.linspace(self.t_data[0], self.t_data[-1], self.N_model)
 
-        # Store optimization bounds. Will only be used if the chosen
-        # optimization routine supports it.
-        if bounds is None:
-            self.bounds = bounds
-        else:
-            self.bounds = np.array(bounds)
-
         # get optimization extra arguments
         self.opt_args = opt_args
 
@@ -504,6 +514,12 @@ class Annealer:
         self.Lidx = Lidx
         self.L = len(Lidx)
 
+        # Store optimization bounds. Will only be used if the chosen
+        # optimization routine supports it.
+        if bounds is None:
+            self.bounds = bounds
+        else:
+            self.bounds = np.array(bounds)
         # properly set up the bounds arrays
         if bounds is not None:
             bounds_full = []
@@ -520,7 +536,11 @@ class Annealer:
                     bounds_full.append(param_b[i])
             else:
                 # parameters are time-dependent
-                for n in xrange(self.N_model):
+                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                    nmax = N_model - 1
+                else:
+                    nmax = N_model
+                for n in xrange(self.nmax):
                     for i in xrange(self.NPest):
                         bounds_full.append(param_b[i])
         else:
@@ -586,7 +606,12 @@ class Annealer:
         if P0.ndim == 1:
             self.minpaths = np.zeros((self.Nbeta, self.N_model*self.D + self.NP), dtype=np.float64)
         else:
-            self.minpaths = np.zeros((self.Nbeta, self.N_model*(self.D + self.NP)), dtype=np.float64)
+            if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                nmax_p = self.N_model - 1
+            else:
+                nmax_p = self.N_model
+            self.minpaths = np.zeros((self.Nbeta, self.N_model*self.D + nmax_p*self.NP), 
+                                      dtype=np.float64)
 
         # initialize observed state components to data if desired
         if init_to_data == True:
@@ -657,14 +682,18 @@ class Annealer:
                 else:
                     self.P[self.Pidx] = np.copy(XPmin[-self.NPest:])
             else:
-                for n in xrange(self.N_model):
+                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                    nmax = self.N_model - 1
+                else:
+                    nmax = self.N_model
+                for n in xrange(nmax):
                     if isinstance(XPmin[0], adolc._adolc.adouble):
-                        nidx = self.N_model - n - 1
+                        nidx = nmax - n - 1
                         self.P[n, self.Pidx] = np.array([XPmin[-nidx*self.NPest + i].val \
                                                          for i in xrange(self.NPest)])
                     else:
-                        pi1 = self.N_model*self.D + n*self.NPest
-                        pi2 = self.N_model*self.D + (n+1)*self.NPest
+                        pi1 = nmax*self.D + n*self.NPest
+                        pi2 = nmax*self.D + (n+1)*self.NPest
                         self.P[n, self.Pidx] = np.copy(XPmin[pi1:pi2])
 
         # store A_min and the minimizing path
@@ -718,16 +747,24 @@ class Annealer:
         if self.P.ndim == 1:
             savearray = np.resize(self.P, (self.Nbeta, self.NP))
         else:
-            savearray = np.resize(self.P, (self.Nbeta, self.N_model, self.NP))
+            if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                savearray = np.resize(self.P, (self.Nbeta, self.N_model - 1, self.NP))
+            else:
+                savearray = np.resize(self.P, (self.Nbeta, self.N_model, self.NP))
         # write estimated parameters to array
         if self.NPest > 0:
             if self.P.ndim == 1:
                 est_param_array = self.minpaths[:, self.N_model*self.D:]
                 savearray[:, self.Pidx] = est_param_array
             else:
-                est_param_array = np.reshape(self.minpaths[:, self.N_model*self.D:],
-                                             (self.Nbeta, self.N_model, self.NPest))
-                savearray[:, :, self.Pidx] = est_param_array
+                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                    est_param_array = np.reshape(self.minpaths[:, self.N_model*self.D:],
+                                                 (self.Nbeta, self.N_model - 1, self.NPest))
+                    savearray[:, :, self.Pidx] = est_param_array
+                else:
+                    est_param_array = np.reshape(self.minpaths[:, self.N_model*self.D:],
+                                                 (self.Nbeta, self.N_model, self.NPest))
+                    savearray[:, :, self.Pidx] = est_param_array
 
         if filename.endswith('.npy'):
             np.save(filename, savearray)
@@ -791,7 +828,10 @@ class Annealer:
         if self.P.ndim == 1:
             xtrace = np.random.rand(self.N_model*self.D + self.NPest)
         else:
-            xtrace = np.random.rand(self.N_model*(self.D + self.NPest))
+            if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                xtrace = np.random.rand(self.N_model*self.D + (self.N_model-1)*self.NPest)
+            else:
+                xtrace = np.random.rand(self.N_model*(self.D + self.NPest))
         adolc.trace_on(self.adolcID)
         # set the active independent variables
         ax = adolc.adouble(xtrace)

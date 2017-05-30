@@ -31,7 +31,7 @@ beta_array = np.linspace(0, 100, 101)
 ################################################################################
 # Load observed data
 ################################################################################
-data = np.load("l96_D20_dt0p025_N161_sm0p5_sec1_mem1.npy")[:3]
+data = np.load("l96_D20_dt0p025_N161_sm0p5_sec1_mem1.npy")[:11]
 times_data = data[:, 0]
 t0 = times_data[0]
 tf = times_data[-1]
