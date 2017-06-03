@@ -555,7 +555,7 @@ class Annealer:
             elif RM.shape == (self.L, self.L):
                 self.RM = np.resize(RM, (self.N_data, self.L, self.L))
             elif RM.shape == (self.N_data, self.L) or \
-                 RM.shape == np.resize(self.N_data, self.L, self.L):
+                 RM.shape == (self.N_data, self.L, self.L):
                 self.RM = RM
             else:
                 print("ERROR: RM has an invalid shape. Exiting.")
