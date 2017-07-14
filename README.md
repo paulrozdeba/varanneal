@@ -26,8 +26,7 @@ ln -s <varanneal_dir>/varanneal.py ./
 ```
 
 ### Usage
-(This example loosely follows the code found in the examples folder in this repository.)
-
+(This example loosely follows the code found in the examples folder in this repository.)  
 Start by importing VarAnneal, as well as NumPy which we'll need too, then instantiate an Annealer object:
 ```python
 import numpy as np
