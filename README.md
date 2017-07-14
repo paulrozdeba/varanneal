@@ -1,10 +1,4 @@
 # VarAnneal
-
-### Author
-Paul Rozdeba  
-May 23, 2017
-
-### Overview
 VarAnneal is a Python module that uses the variational annealing (VA) algorithm first proposed by J.C. Quinn<sup>[1]</sup>
 and described in detail in Ye et. al.<sup>[2]</sup> to 
 perform state and parameter estimation in partially observed dynamical systems.  This method requires optimization 
@@ -109,3 +103,10 @@ thesis in physics, UC San Diego, https://escholarship.org/uc/item/obm253qk (2010
 
 [2] J. Ye, N. Kadakia, P. Rozdeba, H.D.I. Abarbanel, and J.C. Quinn.  *Improved  variational methods in 
 statistical data assimilation.*  Nonlin. Proc. Geophys. **22**, 205-213 (2015).
+
+### Author
+Paul Rozdeba  
+May 23, 2017
+
+### License
+This project is licensed under the MIT license.  See LICENSE for more details.
