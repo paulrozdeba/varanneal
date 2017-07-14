@@ -1,27 +1,37 @@
 """
-Carry out variational annealing.
+Paul Rozdeba (prozdeba@physics.ucsd.edu)
+Department of Physics
+University of California, San Diego
+July 22, 2016
 
-Variational annealing is a numerical continuation algorithm for estimating
-states and parameters in a dynamical model using a variational method of
-data assimilation.  This algorithm was proposed by () in [].
+VarAnneal
 
-annealvar uses automatic differentiation (AD) to calculate derivatives of the 
-action defined in [].
+Carry out the variational annealing algorithm (VA) for estimating unobserved
+dynamical model states and parameters from time series data.
 
-This module contains the class definition for the Annealer object, which is
-an instantiation of a variational annealing calculation.  The user sets a model
-and a data trajectory through the object isntance, and for the annealing
-procedure may choose:
-  1. R_m, the initial value for R_f, and the exponential "ladder" parameterized
-     by alpha and beta.
-  2. The time-discretization routine used for f in the model error term of the
-     action.
-  3. The measured components of the system, the parameters to be estimated, and
-     bounds on all the states and parameters if the chosen optimization
-     routine supports them.
-  4. The optimization routine (current choices include L-BFGS-B, nonlinear
-     conjugate gradient (NCG), Levenberg-Marquardt (LM), and a truncated
-     Newton algorithm (TNC)).
+VA is a form of variational data assimilation that uses numerical continuation
+to regularize the variational cost function, or "action", in a controlled way.
+VA was first proposed by Jack C. Quinn in his Ph.D. thesis (2010) [1], and is
+described by J. Ye et al. (2015) in detail in [2].
+
+This code uses automatic differentiation to evaluate derivatives of the
+action for optimization as implemented in ADOL-C, wrapped in Python code in a
+package called PYADOLC (installation required for usage of VarAnneal).
+PYADOLC is available at https://github.com/b45ch1/pyadolc.
+
+To run the annealing algorithm using this code, instantiate an Annealer object
+in your code using this module.  This object allows you to load in observation
+data, set a model for the system, initial guesses for the states and parameters,
+etc.  To get a good sense of how to use the code, follow along with the examples
+included with this package, and the user guide (coming soon).
+
+References:
+[1] J.C. Quinn, "A path integral approach to data assimilation in stochastic
+    nonlinear systems."  Ph.D. thesis in physics, UC San Diego (2010).
+    Available at: https://escholarship.org/uc/item/0bm253qk
+
+[2] J. Ye et al., "Improved variational methods in statistical data assimilation."
+    Nonlin. Proc. in Geophys., 22, 205-213 (2015).
 """
 
 import numpy as np
@@ -40,18 +50,12 @@ class Annealer:
     def set_model(self, f, D):
         """
         Set the D-dimensional dynamical model for the estimated system.
-        The model must take arguments in the following order:
+        The model function, f, must take arguments in the following order:
             t, x, p
         or, if there is a time-dependent stimulus for f (nonautonomous term):
             t, x, (p, stim)
         where x and stim are at the "current" time t.  Thus, x should be a
         D-dimensional vector, and stim similarly a D_stim-dimensional vector.
-
-        Also set values for the model parameters.  If p is a 1D vector, then
-        the parameters are treated as static values.  If it is a length-N
-        time series, then the parameters are treated as time-dependent.
-        Later, you can set which parameters are to be estimated during the 
-        annealing when the anneal functions are called.
         """
         self.f = f
         self.D = D
@@ -114,7 +118,7 @@ class Annealer:
     ############################################################################
     def A_gaussian(self, XP):
         """
-        Calculate the Gaussian action all in one go.
+        Calculate the value of the Gaussian action.
         """
         merr = self.me_gaussian(XP[:self.N_model*self.D])
         ferr = self.fe_gaussian(XP)
