@@ -109,6 +109,7 @@ class Annealer:
             else:
                 self.stim = None
 
+
     ############################################################################
     # Gaussian action
     ############################################################################
@@ -161,32 +162,43 @@ class Annealer:
                     p = np.reshape(XP[self.N_model*self.D:], (self.N_model, self.NPest))
         else:
             x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
-            p = []
+            p = np.array(self.P, dtype=XP.dtype)
             if self.P.ndim == 1:
-                j = self.NPest
-                for i in xrange(self.NP):
-                    if i in self.Pidx:
-                        p.append(XP[-j])
-                        j -= 1
-                    else:
-                        p.append(self.P[i])
+                p[self.Pidx] = XP[self.N_model*self.D:]
             else:
                 if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
-                    j = (self.N_model - 1) * self.NPest
-                    nmax = self.N_model - 1
+                    p[:, self.Pidx] = np.reshape(XP[self.N_model*self.D:],
+                                                 (self.N_model-1, self.NPest))
                 else:
-                    j = self.N_model * self.NPest
-                    nmax = self.N_model
-                for n in xrange(nmax):
-                    pn = []
-                    for i in xrange(self.NP):
-                        if i in self.Pidx:
-                            pn.append(XP[-j])
-                            j -= 1
-                        else:
-                            pn.append(self.P[n, i])
-                    p.append(pn)
-        p = np.array(p)
+                    p[:, self.Pidx] = np.reshape(XP[self.N_model*self.D:],
+                                                 (self.N_model, self.NPest))
+            
+#            p = []
+#            if self.P.ndim == 1:
+#                j = self.NPest
+#                for i in xrange(self.NP):
+#                    if i in self.Pidx:
+#                        p.append(XP[-j])
+#                        j -= 1
+#                    else:
+#                        p.append(self.P[i])
+#            else:
+#                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+#                    j = (self.N_model - 1) * self.NPest
+#                    nmax = self.N_model - 1
+#                else:
+#                    j = self.N_model * self.NPest
+#                    nmax = self.N_model
+#                for n in xrange(nmax):
+#                    pn = []
+#                    for i in xrange(self.NP):
+#                        if i in self.Pidx:
+#                            pn.append(XP[-j])
+#                            j -= 1
+#                        else:
+#                            pn.append(self.P[n, i])
+#                    p.append(pn)
+#        p = np.array(p)
 
         # Start calculating the model error.
         if self.disc.im_func.__name__ == "disc_SimpsonHermite":
@@ -646,32 +658,36 @@ class Annealer:
         step). Then, RF is increased to prepare for the next annealing step.
         """
         # minimize A using the chosen method
-        if self.method == 'L-BFGS-B':
+        if self.method in ['L-BFGS-B', 'NCG', 'TNC', 'LM']:
             if self.betaidx == 0:
-                XPmin, Amin, exitflag = self.min_lbfgs_scipy(self.minpaths[0])
+                if self.NP == self.NPest:
+                    XP0 = np.copy(self.minpaths[0])
+                else:
+                    X0 = self.minpaths[0][:self.NDnet]
+                    P0 = self.minpaths[0][self.NDnet:][self.Pidx]
+                    XP0 = np.append(X0, P0)
             else:
-                XPmin, Amin, exitflag = self.min_lbfgs_scipy(self.minpaths[self.betaidx-1])
+                if self.NP == self.NPest:
+                    XP0 = np.copy(self.minpaths[self.betaidx-1])
+                else:
+                    X0 = self.minpaths[self.betaidx-1][:self.NDnet]
+                    P0 = self.minpaths[self.betaidx-1][self.NDnet:][self.Pidx]
+                    XP0 = np.append(X0, P0)
 
-        elif self.method == 'NCG':
-            if self.betaidx == 0:
-                XPmin, Amin, exitflag = self.min_cg_scipy(self.minpaths[0])
+            if self.method == 'L-BFGS-B':
+                XPmin, Amin, exitflag = self.min_lbfgs_scipy(XP0)
+            elif self.method == 'NCG':
+                XPmin, Amin, exitflag = self.min_cg_scipy(XP0)
+            elif self.method == 'TNC':
+                XPmin, Amin, exitflag = self.min_tnc_scipy(XP0)
+            elif self.method == 'LM':
+                XPmin, Amin, exitflag = self.min_lm_scipy(XP0)
             else:
-                XPmin, Amin, exitflag = self.min_cg_scipy(self.minpaths[self.betaidx-1])
-
-        elif self.method == 'TNC':
-            if self.betaidx == 0:
-                XPmin, Amin, exitflag = self.min_tnc_scipy(self.minpaths[0])
-            else:
-                XPmin, Amin, exitflag = self.min_tnc_scipy(self.minpaths[self.betaidx-1])
-
-        elif self.method == 'LM':
-            if self.betaidx == 0:
-                XPmin, Amin, exitflag = self.min_lm_scipy(self.minpaths[0])
-            else:
-                XPmin, Amin, exitflag = self.min_lm_scipy(self.minpaths[self.betaidx-1])
-
+                print("You really shouldn't be here.  Exiting.")
+                sys.exit(1)
         else:
             print("ERROR: Optimization routine not implemented or recognized.")
+            sys.exit(1)
 
         # update optimal parameter values
         if self.NPest > 0:
@@ -700,7 +716,7 @@ class Annealer:
         self.A_array[self.betaidx] = Amin
         self.me_array[self.betaidx] = self.me_gaussian(np.array(XPmin[:self.N_model*self.D]))
         self.fe_array[self.betaidx] = self.fe_gaussian(np.array(XPmin))
-        self.minpaths[self.betaidx] = np.array(XPmin)
+        self.minpaths[self.betaidx] = np.array(np.append(XPmin[:self.N_model*self.D], self.P))
 
         # increase RF
         if self.betaidx < len(self.beta_array) - 1:
