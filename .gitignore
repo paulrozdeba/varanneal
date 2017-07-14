@@ -4,3 +4,4 @@
 *.png
 *.pdf
 !examples/Lorenz96_D20/l96_D20_dt0p025_N161_sm0p5_sec1_mem1.npy
+varanneal_autograd.py
