@@ -18,8 +18,16 @@ VarAnneal requires you have the following software installed on your computer:
        ADOL-C, which also installs some readily available and commonly used libraries like boost and COLPACK.  Again, 
        this is fairly automated, but may require a little tinkering.
 
+Finally, your own code needs to be able to find VarAnneal.  There is no formal install strategy as of yet, 
+but simply placing varanneal.py in the same folder as your code, or preferably creating a link/alias to 
+varanneal.py in the same folder, will suffice.  For example,
+```bash
+ln -s <varanneal_dir>/varanneal.py ./
+```
+
 ### Usage
 (This example loosely follows the code found in the examples folder in this repository.)
+
 Start by importing VarAnneal, as well as NumPy which we'll need too, then instantiate an Annealer object:
 ```python
 import numpy as np
