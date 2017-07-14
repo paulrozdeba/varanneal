@@ -20,7 +20,7 @@ D = 20
 # Action/annealing parameters
 ################################################################################
 # Measured variable indices
-Lidx = [0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+Lidx = [0, 2, 4, 6, 8, 10, 14, 16]
 # RM, RF0
 RM = 1.0 / (0.5**2)
 RF0 = 4.0e-6
@@ -31,10 +31,10 @@ beta_array = np.linspace(0, 100, 101)
 ################################################################################
 # Load observed data
 ################################################################################
-data = np.load("l96_D20_dt0p025_N161_sm0p5_sec1_mem1.npy")[:11]
+data = np.load("l96_D20_dt0p025_N161_sm0p5_sec1_mem1.npy")
 times_data = data[:, 0]
-t0 = times_data[0]
-tf = times_data[-1]
+#t0 = times_data[0]
+#tf = times_data[-1]
 dt_data = times_data[1] - times_data[0]
 N_data = len(times_data)
 
@@ -49,7 +49,7 @@ dt_model = dt_data
 N_model = N_data
 X0 = (20.0*np.random.rand(N_model * D) - 10.0).reshape((N_model, D))
 
-# Sample forward mapping twice as fast
+# Sample forward mapping twice as f
 #dt_model = dt_data / 2.0
 #meas_nskip = 2
 #N_model = (N_data - 1) * meas_nskip + 1
