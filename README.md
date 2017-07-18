@@ -7,7 +7,7 @@ and model error (deviations of trajectories from the assumed dynamical behavior 
 Derivatives of the cost function are computed using automatic differentiation (AD) as implemented in 
 [PYADOLC](https://github.com/paulrozdeba/pyadolc), a Python wrapper around [ADOL-C](https://projects.coin-or.org/ADOL-C).  
 
-(Note that for now I'm linking to my fork of PYADOLC, which updates the version of ColPack but requires one or two extra steps to install.  Use this fork if the upstream version at https://github.com/paulrozdeba/pyadolc doesn't build for you.  I had to do this because there were compilation errors using gcc 7.1.1.)
+(Note that for now I'm linking to my fork of PYADOLC, which updates the version of ColPack but requires one or two extra steps to install.  Use this fork if the upstream version at https://github.com/b45ch1/pyadolc doesn't build for you.  I had to do this because there were compilation errors using gcc 7.1.1.)
 
 ### Install
 VarAnneal requires you have the following software installed on your computer:
