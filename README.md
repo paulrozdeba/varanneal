@@ -5,18 +5,21 @@ perform state and parameter estimation in partially observed dynamical systems. 
 of a cost function called the "action" that balances measurement error (deviations of state estimates from observations) 
 and model error (deviations of trajectories from the assumed dynamical behavior given a state and parameter estimate). 
 Derivatives of the cost function are computed using automatic differentiation (AD) as implemented in 
-[PYADOLC](https://github.com/b45ch1/pyadolc), a Python wrapper around [ADOL-C](https://projects.coin-or.org/ADOL-C).
+[PYADOLC](https://github.com/paulrozdeba/pyadolc), a Python wrapper around [ADOL-C](https://projects.coin-or.org/ADOL-C).  (Note that for now I'm linking to my fork of PYADOLC, which updates the version of ColPack but requires one or two extra steps to install).
 
 ### Install
 VarAnneal requires you have the following software installed on your computer:
 1. Python 2 (tested on 2.7.9, probably will work on anything >= 2.7).
 2. NumPy (tested on 1.12.0).
 3. SciPy (tested on 0.18.1).
-4. [PYADOLC](https://github.com/b45ch1/pyadolc)  
+4. [PYADOLC](https://github.com/paulrozdeba/pyadolc)  
     -- The installation instructions for PYADOLC are good, and if you are on a UNIX system then installation is 
        fairly painless (I haven't tried installing this in Windows).  Installing PYADOLC means installing 
-       ADOL-C, which also installs some readily available and commonly used libraries like boost and COLPACK.  Again, 
+       ADOL-C, which also installs some readily available and commonly used libraries like boost and ColPack.  Again, 
        this is fairly automated, but may require a little tinkering.
+    -- Installing ColPack, which is part of insalling PYADOLC, requires some packages in addition to what is listed 
+       on the PYADOLC page: automake and autoconf.  You should be able to find these in your Linux distribution's 
+       software repository, or on homebrew if you use Mac OS.
 
 Finally, your own code needs to be able to find VarAnneal.  There is no formal install strategy as of yet, 
 but simply placing varanneal.py in the same folder as your code, or preferably creating a link/alias to 
