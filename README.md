@@ -15,14 +15,22 @@ VarAnneal requires you have the following software installed on your computer:
 2. NumPy (tested on 1.12.0).
 3. SciPy (tested on 0.18.1).
 4. [PYADOLC](https://github.com/paulrozdeba/pyadolc)  
-    -- The installation instructions for PYADOLC are good, and if you are on a UNIX system then installation is 
-       fairly painless (I haven't tried installing this in Windows).  Installing PYADOLC means installing 
-       ADOL-C, which also installs some readily available and commonly used libraries like boost and ColPack.  Again, 
-       this is fairly automated, but may require a little tinkering.
+
+The installation instructions for PYADOLC are good, and if you are on a UNIX system then installation is 
+fairly painless (I haven't tried installing this in Windows).  Installing PYADOLC means installing 
+ADOL-C, which also installs some readily available and commonly used libraries like boost and ColPack.  Again, 
+this is fairly automated, but may require a little tinkering.
        
-    -- Installing ColPack, which is part of insalling PYADOLC, requires some packages in addition to what is listed 
-       on the PYADOLC page: automake and autoconf.  You should be able to find these in your Linux distribution's 
-       software repository, or on homebrew if you use Mac OS.
+Note that for now I'm linking to my fork of PYADOLC, which updates the version of ColPack to 1.0.10.  If 
+you're a Linux user and using boostrap.sh, then if the PYADOLC installation fails when building ColPack, 
+try changing to the 1.0.10 branch with the following command (while in the root of the pyadolc directory):
+```bash
+git checkout bootstrap-colpack-1.0.10
+```
+(For me, building ColPack 1.0.9 fails with gcc 7.1.1, but not with 5.4.0, so I think it won't work with newer 
+gcc for some reason.)  You will also need to make sure you have automake and autoconf installed on your 
+computer, which you should be able to get from your Linux distribution's repository.
+Now delete the PACKAGES directory, and try bootstrap.sh again.
 
 Finally, your own code needs to be able to find VarAnneal.  There is no formal install strategy as of yet, 
 but simply placing varanneal.py in the same folder as your code, or preferably creating a link/alias to 
