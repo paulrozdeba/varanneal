@@ -42,6 +42,11 @@ import scipy.optimize as opt
 from common import ADmin
 
 class Annealer(ADmin):
+    """
+    Annealer is the main object type for performing variational data
+    assimilation using VA.  It inherits the function minimization routines
+    from ADmin, which uses automatic differentiation.
+    """
     def __init__(self):
         """
         Constructor for the Annealer class.
@@ -159,9 +164,9 @@ class Annealer(ADmin):
                     # [[RMin_1, RMin_2, ..., RMin_Lin], [RMout_1, RMout_2, ..., RMout_Lout]]
                     merr = merr + np.dot(diff_in, np.dot(self.RM[0], diff_in))
                     merr = merr + np.dot(diff_out, np.dot(self.RM[1], diff_out))
-#                else:
-#                    print("ERROR: RM has an invalid shape. Exiting.")
-#                    exit(1)
+                #else:
+                #    print("ERROR: RM has an invalid shape. Exiting.")
+                #    exit(1)
             else:
                 merr = merr + self.RM * (np.sum(diff_in*diff_in) + np.sum(diff_out*diff_out))
 
@@ -241,11 +246,11 @@ class Annealer(ADmin):
                 ferr = ferr + self.RF * np.sum(diff * diff)
         #print diff
         #exit(0)
-#        if isinstance(diff[0], adolc._adolc.adub):
-#            pass
-#        else:
-#            print diff
-#            exit(0)
+        #if isinstance(diff[0], adolc._adolc.adub):
+        #    pass
+        #else:
+        #    print diff
+        #    exit(0)
         #ferr = self.RF * np.sum(diff * diff)
         return ferr / np.float64((self.NDnet - self.structure[0]) * self.M)
 
@@ -305,12 +310,12 @@ class Annealer(ADmin):
         # set up parameters and determine if static or time series
         self.P = P0
         self.NP = len(P0)
-#        if P0.ndim == 1:
-#            # Static parameters, so p is a single vector.
-#            self.NP = len(P0)
-#        else:
-#            # Time-dependent parameters, so p is a time series of N values.
-#            self.NP = P0.shape[1]
+        #if P0.ndim == 1:
+        #    # Static parameters, so p is a single vector.
+        #    self.NP = len(P0)
+        #else:
+        #    # Time-dependent parameters, so p is a time series of N values.
+        #    self.NP = P0.shape[1]
 
         # get indices of parameters to be estimated by annealing
         self.Pidx = Pidx
@@ -329,62 +334,62 @@ class Annealer(ADmin):
         # Simply set RM here; measurement error function should decide how to handle it
         self.RM = RM
 
-#        # get indices of measured components of f
-#        self.Lidx = Lidx
-#        self.L = len(Lidx)
-
-#        # properly set up the bounds arrays
-#        if bounds is not None:
-#            bounds_full = []
-#            state_b = bounds[:self.D]
-#            param_b = bounds[self.D:]
-#            # set bounds on states for all N time points
-#            for n in xrange(self.N):
-#                for i in xrange(self.D):
-#                    bounds_full.append(state_b[i])
-#            # set bounds on parameters
-#            if self.P.ndim == 1:
-#                # parameters are static
-#                for i in xrange(self.NPest):
-#                    bounds_full.append(param_b[i])
-#            else:
-#                # parameters are time-dependent
-#                for n in xrange(self.N):
-#                    for i in xrange(self.NPest):
-#                        bounds_full.append(param_b[i])
-#        else:
-#            bounds_full = None
-
-#        # Reshape RM and RF so that they span the whole time series.  This is
-#        # done because in the action evaluation, it is more efficient to let
-#        # numpy handle multiplication over time rather than using python loops.
-#        if type(RM) == np.ndarray:
-#            if RM.shape == (self.L,):
-#                self.RM = np.resize(RM, (self.N, self.L))
-#            elif RM.shape == (self.L, self.L):
-#                self.RM = np.resize(RM, (self.N, self.L, self.L))
-#            elif RM.shape == (self.N, self.L) or RM.shape == np.resize(self.N, self.L, self.L):
-#                self.RM = RM
-#            else:
-#                print("ERROR: RM has an invalid shape. Exiting.")
-#                exit(1)
-#
-#        else:
-#            self.RM = RM
-#
-#        if type(RF0) == np.ndarray:
-#            if RF0.shape == (self.D,):
-#                self.RF0 = np.resize(RF0, (self.N - 1, self.D))
-#            elif RF0.shape == (self.D, self.D):
-#                self.RF0 = np.resize(RF0, (self.N - 1, self.D, self.D))
-#            elif RF0.shape == (self.N - 1, self.D) or RF0.shape == (self.N - 1, self.D, self.D):
-#                self.RF0 = RF0
-#            else:
-#                print("ERROR: RF0 has an invalid shape. Exiting.")
-#                exit(1)
-#
-#        else:
-#            self.RF0 = RF0
+        ## get indices of measured components of f
+        #self.Lidx = Lidx
+        #self.L = len(Lidx)
+        #
+        ## properly set up the bounds arrays
+        #if bounds is not None:
+        #    bounds_full = []
+        #    state_b = bounds[:self.D]
+        #    param_b = bounds[self.D:]
+        #    # set bounds on states for all N time points
+        #    for n in xrange(self.N):
+        #        for i in xrange(self.D):
+        #            bounds_full.append(state_b[i])
+        #    # set bounds on parameters
+        #    if self.P.ndim == 1:
+        #        # parameters are static
+        #        for i in xrange(self.NPest):
+        #            bounds_full.append(param_b[i])
+        #    else:
+        #        # parameters are time-dependent
+        #        for n in xrange(self.N):
+        #            for i in xrange(self.NPest):
+        #                bounds_full.append(param_b[i])
+        #else:
+        #    bounds_full = None
+        #
+        ## Reshape RM and RF so that they span the whole time series.  This is
+        ## done because in the action evaluation, it is more efficient to let
+        ## numpy handle multiplication over time rather than using python loops.
+        #if type(RM) == np.ndarray:
+        #    if RM.shape == (self.L,):
+        #        self.RM = np.resize(RM, (self.N, self.L))
+        #    elif RM.shape == (self.L, self.L):
+        #        self.RM = np.resize(RM, (self.N, self.L, self.L))
+        #    elif RM.shape == (self.N, self.L) or RM.shape == np.resize(self.N, self.L, self.L):
+        #        self.RM = RM
+        #    else:
+        #        print("ERROR: RM has an invalid shape. Exiting.")
+        #        exit(1)
+        #
+        #else:
+        #    self.RM = RM
+        #
+        #if type(RF0) == np.ndarray:
+        #    if RF0.shape == (self.D,):
+        #        self.RF0 = np.resize(RF0, (self.N - 1, self.D))
+        #    elif RF0.shape == (self.D, self.D):
+        #        self.RF0 = np.resize(RF0, (self.N - 1, self.D, self.D))
+        #    elif RF0.shape == (self.N - 1, self.D) or RF0.shape == (self.N - 1, self.D, self.D):
+        #        self.RF0 = RF0
+        #    else:
+        #        print("ERROR: RF0 has an invalid shape. Exiting.")
+        #        exit(1)
+        #
+        #else:
+        #    self.RF0 = RF0
 
         # set up beta array in RF = RF0 * alpha**beta
         self.alpha = alpha
@@ -413,11 +418,11 @@ class Annealer(ADmin):
 
         # array to store minimizing paths
         self.minpaths = np.zeros((self.Nbeta, self.NDens + self.NP), dtype=np.float64)
-#        if P0.ndim == 1:
-#            self.minpaths = np.zeros((self.Nbeta, self.N*self.D + self.NP), dtype=np.float64)
-#        else:
-#            self.minpaths = np.zeros((self.Nbeta, self.N*(self.D + self.NP)), dtype=np.float64)
-#
+        #if P0.ndim == 1:
+        #    self.minpaths = np.zeros((self.Nbeta, self.N*self.D + self.NP), dtype=np.float64)
+        #else:
+        #    self.minpaths = np.zeros((self.Nbeta, self.N*(self.D + self.NP)), dtype=np.float64)
+
         # initialize observed state components to data if desired
         if init_to_data == True:
             for m in xrange(self.M):
@@ -428,14 +433,13 @@ class Annealer(ADmin):
                 X0[i0:i1][self.Lidx[0]] = self.data_in[m]
                 X0[i2:i3][self.Lidx[1]] = self.data_out[m]
 
-#
-#        if self.NPest > 0:
-#            if P0.ndim == 1:
-#                XP0 = np.append(X0.flatten(), P0)
-#            else:
-#                XP0 = np.append(X0.flatten(), P0.flatten())
-#        else:
-#            XP0 = X0.flatten()
+        #if self.NPest > 0:
+        #    if P0.ndim == 1:
+        #        XP0 = np.append(X0.flatten(), P0)
+        #    else:
+        #        XP0 = np.append(X0.flatten(), P0.flatten())
+        #else:
+        #    XP0 = X0.flatten()
 
         XP0 = np.append(X0, P0)
         self.minpaths[0] = XP0
@@ -476,13 +480,13 @@ class Annealer(ADmin):
                     XP0 = np.append(X0, P0)
 
             if self.method == 'L-BFGS-B':
-                XPmin, Amin, exitflag = self.min_lbfgs_scipy(XP0)
+                XPmin, Amin, exitflag = self.min_lbfgs_scipy(XP0, self.gen_xtrace())
             elif self.method == 'NCG':
-                XPmin, Amin, exitflag = self.min_cg_scipy(XP0)
+                XPmin, Amin, exitflag = self.min_cg_scipy(XP0, self.gen_xtrace())
             elif self.method == 'TNC':
-                XPmin, Amin, exitflag = self.min_tnc_scipy(XP0)
-#            elif self.method == 'LM':
-#                XPmin, Amin, exitflag = self.min_lm_scipy(XP0)
+                XPmin, Amin, exitflag = self.min_tnc_scipy(XP0, self.gen_xtrace())
+            #elif self.method == 'LM':
+            #    XPmin, Amin, exitflag = self.min_lm_scipy(XP0)
             else:
                 print("You really shouldn't be here.  Exiting.")
                 sys.exit(1)
@@ -627,16 +631,16 @@ class Annealer(ADmin):
 
         # Save model error / RF
         savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
-#        if type(self.RF) == np.ndarray:
-#            if self.RF0.shape == (self.N - 1, self.D):
-#                savearray[:, 4] = self.fe_array / (self.RF0[0, 0] * self.alpha**self.beta_array)
-#            elif self.RF0.shape == (self.N - 1, self.D, self.D):
-#                savearray[:, 4] = self.fe_array / (self.RF0[0, 0, 0] * self.alpha**self.beta_array)
-#            else:
-#                print("RF shape currently not supported for saving.")
-#                return 1
-#        else:
-#            savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
+        #if type(self.RF) == np.ndarray:
+        #    if self.RF0.shape == (self.N - 1, self.D):
+        #        savearray[:, 4] = self.fe_array / (self.RF0[0, 0] * self.alpha**self.beta_array)
+        #    elif self.RF0.shape == (self.N - 1, self.D, self.D):
+        #        savearray[:, 4] = self.fe_array / (self.RF0[0, 0, 0] * self.alpha**self.beta_array)
+        #    else:
+        #        print("RF shape currently not supported for saving.")
+        #        return 1
+        #else:
+        #    savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
 
         if filename.endswith('.npy'):
             np.save(filename, savearray)
@@ -646,7 +650,7 @@ class Annealer(ADmin):
     ############################################################################
     # AD taping & derivatives
     ############################################################################
-    def __gen_xtrace(self):
+    def gen_xtrace(self):
         """
         Define a random state vector for the AD trace.
         """

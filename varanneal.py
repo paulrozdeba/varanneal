@@ -38,8 +38,14 @@ import numpy as np
 import adolc
 import time
 import scipy.optimize as opt
+from common import ADmin
 
-class Annealer:
+class Annealer(ADmin):
+    """
+    Annealer is the main object type for performing variational data
+    assimilation using VA.  It inherits the function minimization routines
+    from ADmin, which uses automatic differentiation.
+    """
     def __init__(self):
         """
         Constructor for the Annealer class.
@@ -177,32 +183,32 @@ class Annealer:
                     p[:, self.Pidx] = np.reshape(XP[self.N_model*self.D:],
                                                  (self.N_model, self.NPest))
             
-#            p = []
-#            if self.P.ndim == 1:
-#                j = self.NPest
-#                for i in xrange(self.NP):
-#                    if i in self.Pidx:
-#                        p.append(XP[-j])
-#                        j -= 1
-#                    else:
-#                        p.append(self.P[i])
-#            else:
-#                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
-#                    j = (self.N_model - 1) * self.NPest
-#                    nmax = self.N_model - 1
-#                else:
-#                    j = self.N_model * self.NPest
-#                    nmax = self.N_model
-#                for n in xrange(nmax):
-#                    pn = []
-#                    for i in xrange(self.NP):
-#                        if i in self.Pidx:
-#                            pn.append(XP[-j])
-#                            j -= 1
-#                        else:
-#                            pn.append(self.P[n, i])
-#                    p.append(pn)
-#        p = np.array(p)
+            #p = []
+            #if self.P.ndim == 1:
+            #    j = self.NPest
+            #    for i in xrange(self.NP):
+            #        if i in self.Pidx:
+            #            p.append(XP[-j])
+            #            j -= 1
+            #        else:
+            #            p.append(self.P[i])
+            #else:
+            #    if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+            #        j = (self.N_model - 1) * self.NPest
+            #        nmax = self.N_model - 1
+            #    else:
+            #        j = self.N_model * self.NPest
+            #        nmax = self.N_model
+            #    for n in xrange(nmax):
+            #        pn = []
+            #        for i in xrange(self.NP):
+            #            if i in self.Pidx:
+            #                pn.append(XP[-j])
+            #                j -= 1
+            #            else:
+            #                pn.append(self.P[n, i])
+            #        p.append(pn)
+        #p = np.array(p)
 
         # Start calculating the model error.
         if self.disc.im_func.__name__ == "disc_SimpsonHermite":
@@ -391,27 +397,27 @@ class Annealer:
 
         return self.dt_model * (fn + fnp1) / 2.0
 
-# Don't use RK4 yet, still trying to decide how to implement with a stimulus.
-#    def disc_rk4(self, x, p):
-#        """
-#        RK4 time discretization for the action.
-#        """
-#        if self.stim is None:
-#            pn = p
-#            pmid = p
-#            pnp1 = p
-#        else:
-#            pn = (p, self.stim[:-2:2])
-#            pmid = (p, self.stim[1:-1:2])
-#            pnp1 = (p, self.stim[2::2])
-#
-#        xn = x[:-1]
-#        tn = np.tile(self.t[:-1], (self.D, 1)).T
-#        k1 = self.f(tn, xn, pn)
-#        k2 = self.f(tn + self.dt/2.0, xn + k1*self.dt/2.0, pmid)
-#        k3 = self.f(tn + self.dt/2.0, xn + k2*self.dt/2.0, pmid)
-#        k4 = self.f(tn + self.dt, xn + k3*self.dt, pnp1)
-#        return self.dt * (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
+    #Don't use RK4 yet, still trying to decide how to implement with a stimulus.
+    #def disc_rk4(self, x, p):
+    #    """
+    #    RK4 time discretization for the action.
+    #    """
+    #    if self.stim is None:
+    #        pn = p
+    #        pmid = p
+    #        pnp1 = p
+    #    else:
+    #        pn = (p, self.stim[:-2:2])
+    #        pmid = (p, self.stim[1:-1:2])
+    #        pnp1 = (p, self.stim[2::2])
+    #
+    #    xn = x[:-1]
+    #    tn = np.tile(self.t[:-1], (self.D, 1)).T
+    #    k1 = self.f(tn, xn, pn)
+    #    k2 = self.f(tn + self.dt/2.0, xn + k1*self.dt/2.0, pmid)
+    #    k3 = self.f(tn + self.dt/2.0, xn + k2*self.dt/2.0, pmid)
+    #    k4 = self.f(tn + self.dt, xn + k3*self.dt, pnp1)
+    #    return self.dt * (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
 
     def disc_SimpsonHermite(self, x, p):
         """
@@ -679,13 +685,13 @@ class Annealer:
                     XP0 = np.append(X0, P0)
 
             if self.method == 'L-BFGS-B':
-                XPmin, Amin, exitflag = self.min_lbfgs_scipy(XP0)
+                XPmin, Amin, exitflag = self.min_lbfgs_scipy(XP0, self.gen_xtrace())
             elif self.method == 'NCG':
-                XPmin, Amin, exitflag = self.min_cg_scipy(XP0)
+                XPmin, Amin, exitflag = self.min_cg_scipy(XP0, self.gen_xtrace())
             elif self.method == 'TNC':
-                XPmin, Amin, exitflag = self.min_tnc_scipy(XP0)
-            elif self.method == 'LM':
-                XPmin, Amin, exitflag = self.min_lm_scipy(XP0)
+                XPmin, Amin, exitflag = self.min_tnc_scipy(XP0, self.gen_xtrace())
+            #elif self.method == 'LM':
+            #    XPmin, Amin, exitflag = self.min_lm_scipy(XP0)
             else:
                 print("You really shouldn't be here.  Exiting.")
                 sys.exit(1)
@@ -838,13 +844,10 @@ class Annealer:
     ############################################################################
     # AD taping & derivatives
     ############################################################################
-    def tape_A(self):
+    def gen_xtrace(self):
         """
-        Tape the objective function.
+        Define a random state vector for the AD trace.
         """
-        print('Taping action evaluation...')
-        tstart = time.time()
-        # define a random state vector for the trace
         if self.P.ndim == 1:
             xtrace = np.random.rand(self.N_model*self.D + self.NPest)
         else:
@@ -852,133 +855,4 @@ class Annealer:
                 xtrace = np.random.rand(self.N_model*self.D + (self.N_model-1)*self.NPest)
             else:
                 xtrace = np.random.rand(self.N_model*(self.D + self.NPest))
-        adolc.trace_on(self.adolcID)
-        # set the active independent variables
-        ax = adolc.adouble(xtrace)
-        adolc.independent(ax)
-        # set the dependent variable (or vector of dependent variables)
-        af = self.A(ax)
-        adolc.dependent(af)
-        adolc.trace_off()
-        self.taped = True
-        print('Done!')
-        print('Time = {0} s\n'.format(time.time()-tstart))
-
-    def A_taped(self, XP):
-        return adolc.function(self.adolcID, XP)
-    
-    def gradA_taped(self, XP):
-        return adolc.gradient(self.adolcID, XP)
-
-    def A_gradA_taped(self, XP):
-        return adolc.function(self.adolcID, XP), adolc.gradient(self.adolcID, XP)
-
-    def jacA_taped(self, XP):
-        return adolc.jacobian(self.adolcID, XP)
-
-    def A_jacaA_taped(self, XP):
-        return adolc.function(self.adolcID, XP), adolc.jacobian(self.adolcID, XP)
-
-    def hessianA_taped(self, XP):
-        return adolc.hessian(self.adolcID, XP)
-
-    ################################################################################
-    # Minimization functions
-    ################################################################################
-    def min_lbfgs_scipy(self, XP0):
-        """
-        Minimize f starting from XP0 using L-BFGS-B method in scipy.
-        This method supports the use of bounds.
-        Returns the minimizing state, the minimum function value, and the L-BFGS
-        termination information.
-        """
-        if self.taped == False:
-            self.tape_A()
-
-        # start the optimization
-        print("Beginning optimization...")
-        tstart = time.time()
-        res = opt.minimize(self.A_gradA_taped, XP0, method='L-BFGS-B', jac=True,
-                           options=self.opt_args, bounds=self.bounds)
-        XPmin,status,Amin = res.x, res.status, res.fun
-
-        print("Optimization complete!")
-        print("Time = {0} s".format(time.time()-tstart))
-        print("Exit flag = {0}".format(status))
-        print("Exit message: {0}".format(res.message))
-        print("Iterations = {0}".format(res.nit))
-        print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status
-
-    def min_cg_scipy(self, XP0):
-        """
-        Minimize f starting from XP0 using nonlinear CG method in scipy.
-        Returns the minimizing state, the minimum function value, and the CG
-        termination information.
-        """
-        if self.taped == False:
-            self.tape_A()
-
-        # start the optimization
-        print("Beginning optimization...")
-        tstart = time.time()
-        res = opt.minimize(self.A_gradA_taped, XP0, method='CG', jac=True,
-                           options=self.opt_args)
-        XPmin,status,Amin = res.x, res.status, res.fun
-
-        print("Optimization complete!")
-        print("Time = {0} s".format(time.time()-tstart))
-        print("Exit flag = {0}".format(status))
-        print("Exit message: {0}".format(res.message))
-        print("Iterations = {0}".format(res.nit))
-        print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status
-
-    def min_tnc_scipy(self, XP0):
-        """
-        Minimize f starting from XP0 using Newton-CG method in scipy.
-        Returns the minimizing state, the minimum function value, and the CG
-        termination information.
-        """
-        if self.taped == False:
-            self.tape_A()
-
-        # start the optimization
-        print("Beginning optimization...")
-        tstart = time.time()
-        res = opt.minimize(self.A_gradA_taped, XP0, method='TNC', jac=True,
-                           options=self.opt_args, bounds=self.bounds)
-        XPmin,status,Amin = res.x, res.status, res.fun
-
-        print("Optimization complete!")
-        print("Time = {0} s".format(time.time()-tstart))
-        print("Exit flag = {0}".format(status))
-        print("Exit message: {0}".format(res.message))
-        print("Iterations = {0}".format(res.nit))
-        print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status
-
-    def min_lm_scipy(self, XP0):
-        """
-        Minimize f starting from XP0 using Levenberg-Marquardt in scipy.
-        Returns the minimizing state, the minimum function value, and the CG
-        termination information.
-        """
-        if self.taped == False:
-            self.tape_A()
-
-        # start the optimization
-        print("Beginning optimization...")
-        tstart = time.time()
-        res = opt.root(self.A_jacA_taped, XP0, method='lm', jac=True,
-                       options=self.opt_args)
-
-        XPmin,status,Amin = res.x, res.status, res.fun
-
-        print("Optimization complete!")
-        print("Time = {0} s".format(time.time()-tstart))
-        print("Exit flag = {0}".format(status))
-        print("Exit message: {0}".format(res.message))
-        print("Iterations = {0}".format(res.nit))
-        print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status
+        return xtrace

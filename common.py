@@ -4,7 +4,7 @@ Department of Physics
 University of California, San Diego
 May 23, 2017
 
-Functions and base class definitions common to all versions of systems using 
+Functions and base class definitions common to all system types using 
 variational annealing.
 """
 
@@ -13,6 +13,10 @@ import adolc
 import scipy.optimize as opt
 
 class ADmin(object):
+    """
+    ADmin is an object type for using AD ad implemented in ADOL-C to minimize
+    arbitrary scalar functions, i.e. functions f s.t. f: R^N --> R.
+    """
     def __init__(self):
         """
         These routines are the same for all system types and their variables
@@ -30,22 +34,6 @@ class ADmin(object):
         """
         print('Taping action evaluation...')
         tstart = time.time()
-
-        # define a random state vector for the trace
-        if self.systype == 'ode':
-            if self.P.ndim == 1:
-                xtrace = np.random.rand(self.N_model*self.D + self.NPest)
-            else:
-                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
-                    xtrace = np.random.rand(self.N_model*self.D + (self.N_model-1)*self.NPest)
-                else:
-                    xtrace = np.random.rand(self.N_model*(self.D + self.NPest))
-        elif self.systype == 'nnet':
-            xtrace = np.random.rand(self.NDens + self.NPest)
-        else:
-            print("ERROR: Invalid systype. This shouldn't happen unless you " + \
-                  "tried to manually set this yourself, which is a no no.")
-            exit(1)
 
         adolc.trace_on(self.adolcID)
         # set the active independent variables
@@ -80,7 +68,7 @@ class ADmin(object):
     ################################################################################
     # Minimization functions
     ################################################################################
-    def min_lbfgs_scipy(self, XP0):
+    def min_lbfgs_scipy(self, XP0, xtrace=None):
         """
         Minimize f starting from XP0 using L-BFGS-B method in scipy.
         This method supports the use of bounds.
@@ -88,7 +76,7 @@ class ADmin(object):
         termination information.
         """
         if self.taped == False:
-            self.tape_A()
+            self.tape_A(xtrace)
 
         # start the optimization
         print("Beginning optimization...")
@@ -105,14 +93,14 @@ class ADmin(object):
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_cg_scipy(self, XP0):
+    def min_cg_scipy(self, XP0, xtrace=None):
         """
         Minimize f starting from XP0 using nonlinear CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
         if self.taped == False:
-            self.tape_A()
+            self.tape_A(xtrace)
 
         # start the optimization
         print("Beginning optimization...")
@@ -129,14 +117,14 @@ class ADmin(object):
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_tnc_scipy(self, XP0):
+    def min_tnc_scipy(self, XP0, xtrace=None):
         """
         Minimize f starting from XP0 using Newton-CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
         if self.taped == False:
-            self.tape_A()
+            self.tape_A(xtrace)
 
         # start the optimization
         print("Beginning optimization...")
@@ -153,14 +141,14 @@ class ADmin(object):
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status
 
-    def min_lm_scipy(self, XP0):
+    def min_lm_scipy(self, XP0, xtrace=None):
         """
         Minimize f starting from XP0 using Levenberg-Marquardt in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
         if self.taped == False:
-            self.tape_A()
+            self.tape_A(xtrace)
 
         # start the optimization
         print("Beginning optimization...")
