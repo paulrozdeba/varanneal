@@ -11,6 +11,7 @@ variational annealing.
 import numpy as np
 import adolc
 import scipy.optimize as opt
+import time
 
 class ADmin(object):
     """

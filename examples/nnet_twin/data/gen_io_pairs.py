@@ -3,6 +3,7 @@ Generate lots of input/output pairs from the data-generating network.
 """
 
 import numpy as np
+import os
 
 # Define the network activations
 def activation(x, W, b):
@@ -31,10 +32,19 @@ np.random.seed(43650832)  # training
 #folder = "test"
 #np.random.seed(78943689)  # test
 
+# Create folders to contain data, if they don't exist yet
+if not os.path.exists(folder):
+    os.makedirs(folder)
+
 for i in xrange(Nparam):  # parameter index
+    # Make folder for this parametrization if it doesn't exist yet
+    if not os.path.exists(folder + "/param%d"%(i+1,)):
+        os.makedirs(folder + "/param%d"%(i+1,))
+
     # Load in parameters
     W = np.load("params/W_%d.npy"%(i+1,))
     b = np.load("params/b_%d.npy"%(i+1,))
+
     for j in xrange(Nexamples):
         y = []
         # Draw random input from N(0, sigma^2)

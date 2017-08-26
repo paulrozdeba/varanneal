@@ -3,11 +3,12 @@
 """
 
 import numpy as np
-import varanneal_neuralnet
+#import varanneal
+from varanneal import va_nnet
 import sys, time
 
 L = 10  # number of observed components
-M = 5  # number of training examples
+M = 2  # number of training examples
 suffix = "sm0p005"  # suffix to specify 
 # Next is the ADOLC tape ID. This only needs to be changed if you're
 # running multiple instances simultaneously (to avoid using the tape from 
@@ -51,7 +52,7 @@ beta_array = np.linspace(0, 435, 436)
 ################################################################################
 # Input and output data
 ################################################################################
-data_dir = "../../data/training/param1/"
+data_dir = "data/training/param1/"
 data_in = []
 data_out = []
 
@@ -121,7 +122,7 @@ Pidx = np.array(Pidx).flatten().tolist()
 # Annealing
 ################################################################################
 # Initialize Annealer
-anneal1 = varanneal_neuralnet.Annealer()
+anneal1 = va_nnet.Annealer()
 # Set the network structure
 anneal1.set_structure(structure)
 # Set the activation function

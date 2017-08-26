@@ -7,7 +7,8 @@ differentiation to do the action minimization at each step.
 """
 
 import numpy as np
-import varanneal
+#import varanneal
+from varanneal import va_ode
 import sys, time
 
 # Define the model
@@ -71,7 +72,7 @@ P0 = np.array([4.0 * np.random.rand() + 6.0])  # Static parameter
 # Annealing
 ################################################################################
 # Initialize Annealer
-anneal1 = varanneal.Annealer()
+anneal1 = va_ode.Annealer()
 # Set the Lorenz 96 model
 anneal1.set_model(l96, D)
 # Load the data into the Annealer object

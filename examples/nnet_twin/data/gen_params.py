@@ -6,6 +6,7 @@ The biases are all set to zero.
 """
 
 import numpy as np
+import os
 
 # Set up network structure
 D_in = 10
@@ -16,6 +17,10 @@ N = 100  # number of layers, including input and output
 Nparamsets = 10  # number of different parameter sets to generate
 
 np.random.seed(17439860)  # change the seed to get different parameters
+
+# Create directory to store parameters, if it doesn't exist
+if not os.path.exists("params"):
+    os.makedirs("params")
 
 for i in xrange(Nparamsets):
     # Generate parameter set i
