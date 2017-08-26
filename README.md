@@ -9,31 +9,43 @@ Derivatives of the cost function are computed using automatic differentiation (A
 
 ### Install
 VarAnneal requires you have the following software installed on your computer:
-1. Python 2 (tested on 2.7.9, probably will work on anything >= 2.7).
-2. NumPy (tested on 1.12.0).
-3. SciPy (tested on 0.18.1).
+1. Python 2 (tested on 2.7.9, probably will work on anything ≥ 2.7).
+2. NumPy (tested on ≥ 1.12.0).
+3. SciPy (tested on ≥ 0.18.1).
 4. [PYADOLC](https://github.com/b45ch1/pyadolc)  
 
 The installation instructions for PYADOLC are good, and if you are on a UNIX system then installation is 
 fairly painless (I haven't tried installing this in Windows).  Installing PYADOLC means installing 
 ADOL-C, which also installs some readily available and commonly used libraries like boost and ColPack.  Again, 
-this is fairly automated, but may require a little tinkering.
+this is fairly automated in PYADOLC, but may require a little tinkering.
 
-Finally, your own code needs to be able to find VarAnneal.  There is no formal install strategy as of yet, 
-but simply placing varanneal.py in the same folder as your code, or preferably creating a link/alias to 
-varanneal.py in the same folder, will suffice.  For example,
+Once you have this all installed, clone this git repo somewhere on your computer; I usually like putting 
+cloned repos in `~/.local/src`.  There is a setup.py file in the repo so, if you use Anaconda for example, 
+then follow the usual procedure for installation.  If you don't, you can easily install the package with 
+setuptools (comes automatically with [pip](https://pip.pypa.io/en/stable/installing/)). Install it locally 
+with the following steps:
 ```bash
-ln -s <varanneal_dir>/varanneal.py ./
+python2 setup.py build
+python2 setup.py install --user
 ```
+and now you should be able to import varanneal from anywhere (repeat this procedure for additional users 
+on the same machine).
 
 ### Usage
-(This example loosely follows the code found in the examples folder in this repository.)  
+(This example loosely follows the code found in the examples folder in this repository, for the case of 
+state and parameter estimation in an ODE dynamical system. Check out the neural network examples too to 
+see how that works; eventually I'll update this README with instructions for neural networks too).
 Start by importing VarAnneal, as well as NumPy which we'll need too, then instantiate an Annealer object:
 ```python
 import numpy as np
-import varanneal
+from varanneal import va_ode
 
-myannealer = varanneal.Annealer()
+myannealer = va_ode.Annealer()
+```
+Alternatively the following syntax for importing/using varanneal (ODE version) works too:
+```python
+import varanneal
+myannealer = varanneal.va_ode.Annealer()
 ```
 Now define a dynamical model for the observed system (here we're going to use Lorenz 96 as an example):
 ```python
