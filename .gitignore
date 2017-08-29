@@ -10,3 +10,6 @@ varanneal_autograd.py
 build
 dist
 varanneal.egg-info
+
+*/.ipynb-checkpoints
+.ipynb_checkpoints
