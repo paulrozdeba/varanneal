@@ -19,15 +19,15 @@ import numpy as np
 ################################################################################
 
 # Set the type of images you'd like to generate
-#imagetype = "centered"  # bars all centered in middle of image
-imagetype = "allpositions"  # bars centered on all pixels
+imagetype = "centered"  # bars all centered in middle of image
+#imagetype = "allpositions"  # bars centered on all pixels
 
 # Set dimension of images (must be odd!), i.e. images will be square and dim X dim pixels
-dim = 3
+dim = 5
 
 # Number of training example *sets*, meaning Nsets output sets containing one of 
 # every possible bar location.
-Nsets = 2
+Nsets = 1000
 
 # Image noise seed
 np.random.seed(85964309)
@@ -96,22 +96,6 @@ if imagetype == "centered":
         np.savetxt(data_fname, data, fmt="%.8e")
         np.savetxt(label_fname, labels, fmt="%d")
 
-    #for i in xrange(M):
-    #    exec "datah%d = h%d + 0.35 * (0.5 - np.random.random_sample(size))"%(hvidx, hvidx)
-    #    exec "datav%d = v%d + 0.35 * (0.5 - np.random.random_sample(size))"%(hvidx, hvidx)
-    #    exec "datad1%d = d1%d + 0.35 * (0.5 - np.random.random_sample(size))"%(diagidx, diagidx)
-    #    exec "datad2%d = d2%d + 0.35 * (0.5 - np.random.random_sample(size))"%(diagidx, diagidx)
-    #    with open("datacentered.txt", "ab") as mydata:
-    #        exec "np.savetxt(mydata, [datah%d.flatten()])"%(hvidx)
-    #        exec "np.savetxt(mydata, [datav%d.flatten()])"%(hvidx)
-    #        exec "np.savetxt(mydata, [datad1%d.flatten()])"%(diagidx)
-    #        exec "np.savetxt(mydata, [datad2%d.flatten()])"%(diagidx)
-    #    with open("labelcentered.txt", "ab") as mylabel:
-    #        np.savetxt(mylabel,[np.array([1,0,0,0])])
-    #        np.savetxt(mylabel,[np.array([0,0,1,0])])
-    #        np.savetxt(mylabel,[np.array([0,1,0,0])])
-    #        np.savetxt(mylabel,[np.array([0,0,0,1])])
-
 if imagetype == "allpositions":   
     # Generates images centered on all pixels
     M = Nsets*(2*dim + 2*Ndiag)
@@ -142,31 +126,3 @@ if imagetype == "allpositions":
     else:
         np.savetxt(data_fname, data, fmt="%.8e")
         np.savetxt(label_fname, labels, fmt="%d")
-    
-    #for i in xrange(Nsets):
-    #    for j in xrange(1, dim+1):
-    #        exec "datah%d = h%d + 0.35 * (0.5 - np.random.random_sample(size))"%(j, j)
-    #    for j in xrange(1, dim+1):
-    #        exec "datav%d = v%d + 0.35 * (0.5 - np.random.random_sample(size))"%(j, j)
-    #    for j in xrange(1, Ndiag+1):
-    #        exec "datad1%d = d1%d + 0.35 * (0.5 - np.random.random_sample(size))"%(j, j)
-    #    for j in xrange(1, Ndiag+1):
-    #        exec "datad2%d = d2%d + 0.35 * (0.5 - np.random.random_sample(size))"%(j, j)
-    #    with open("data.txt", "ab") as mydata:
-    #        for j in xrange(1, dim+1):
-    #            exec "np.savetxt(mydata, [datah%d.flatten()])"%(j,)
-    #        for j in xrange(1, dim+1):
-    #            exec "np.savetxt(mydata, [datav%d.flatten()])"%(j,)
-    #        for j in xrange(1, Ndiag+1):
-    #            exec "np.savetxt(mydata, [datad1%d.flatten()])"%(j,)
-    #        for j in xrange(1, Ndiag+1):
-    #            exec "np.savetxt(mydata, [datad2%d.flatten()])"%(j,)
-    #    with open("label.txt", "ab") as mylabel:
-    #        for j in xrange(dim):
-    #            np.savetxt(mylabel, [np.array([1,0,0,0])])
-    #        for j in xrange(dim):
-    #            np.savetxt(mylabel,[np.array([0,0,1,0])])
-    #        for j in xrange(Ndiag):
-    #            np.savetxt(mylabel,[np.array([0,1,0,0])])
-    #        for j in xrange(Ndiag):
-    #            np.savetxt(mylabel,[np.array([0,0,0,1])])

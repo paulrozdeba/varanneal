@@ -49,16 +49,8 @@ beta_array = np.linspace(0, 435, 436)
 ################################################################################
 # Input and output data
 ################################################################################
-data_in = []
-data_out = []
-for n in range(Nexamples):
-    data_n = np.load("data/sasha_bar_data/datacentered_norm/data_%d.npy"%(n+1,))
-    label_n = np.load("data/sasha_bar_data/datacentered_norm/label_%d.npy"%(n+1,))
-    data_in.append(data_n[Lidx[0]])
-    data_out.append(label_n[Lidx[1]])
-
-data_in = np.array(data_in)
-data_out = np.array(data_out)
+data_in = np.load("data/training_data.npy")[:M, :]
+data_out = np.load("data/training_label.npy")[:M, :]
 
 ################################################################################
 # Initial path/parameter guesses
@@ -73,7 +65,7 @@ for n in xrange(N-2):
     X0 = np.append(X0, 0.2*np.random.rand(D_hidden) + 0.4)
 X0 = np.append(X0, 0.2*np.random.rand(D_out) + 0.4)
 
-for m in xrange(Nexamples - 1):
+for m in xrange(M - 1):
     Xin = np.random.randn(D_in)
     Xin = (Xin - np.average(Xin)) / np.std(Xin)
     X0 = np.append(X0, Xin)
