@@ -525,7 +525,7 @@ class Annealer(ADmin):
     ################################################################################
     # Routines to save annealing results.
     ################################################################################
-    def save_states(self, filename):
+    def save_states(self, filename, dtype=np.float64, fmt="%.8e"):
         """
         Save minimizing neuron states (not including parameters).
         """
@@ -545,11 +545,11 @@ class Annealer(ADmin):
         savearray = np.array(savearray)
 
         if filename.endswith('.npy'):
-            np.save(filename, savearray)
+            np.save(filename, savearray.astype(dtype))
         else:
-            np.savetxt(filename, savearray)
+            np.savetxt(filename, savearray, fmt=fmt)
 
-    def save_io(self, filename):
+    def save_io(self, filename, dtype=np.float64, fmt="%.8e"):
         """
         Save minimizing input/output neuron states (not including parameters).
         """
@@ -569,11 +569,11 @@ class Annealer(ADmin):
         savearray = np.array(savearray)
 
         if filename.endswith('.npy'):
-            np.save(filename, savearray)
+            np.save(filename, savearray.astype(dtype))
         else:
-            np.savetxt(filename, savearray)
+            np.savetxt(filename, savearray, fmt=fmt)
 
-    def save_params(self, filename):
+    def save_params(self, filename, dtype=np.float64, fmt="%.8e"):
         """
         Save minimum action parameter values.
         """
@@ -589,11 +589,11 @@ class Annealer(ADmin):
             savearray[:, self.Pidx] = est_param_array
 
         if filename.endswith('.npy'):
-            np.save(filename, savearray)
+            np.save(filename, savearray.astype(dtype))
         else:
-            np.savetxt(filename, savearray)
+            np.savetxt(filename, savearray, fmt=fmt)
 
-    def save_Wb(self, W_filename, b_filename):
+    def save_Wb(self, W_filename, b_filename, dtype=np.float64):
         """
         Save W and b in separate files.
         """
@@ -615,10 +615,13 @@ class Annealer(ADmin):
                     p_i0 = p_i1
                     p_i1 += self.structure[n+1]*self.structure[n+2] + self.structure[n+2]
 
+        W = np.array(W, dtype=dtype)
+        b = np.array(b, dtype=dtype)
+
         np.save(W_filename, W)
         np.save(b_filename, b)
 
-    def save_action_errors(self, filename, cmpt=0):
+    def save_action_errors(self, filename, cmpt=0, dtype=np.float64, fmt="%.8e"):
         """
         Save beta values, action, and errors (with/without RM and RF) to file.
         cmpt sets which component of RF0 to normalize by.
@@ -643,9 +646,9 @@ class Annealer(ADmin):
         #    savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
 
         if filename.endswith('.npy'):
-            np.save(filename, savearray)
+            np.save(filename, savearray.astype(dtype))
         else:
-            np.savetxt(filename, savearray)
+            np.savetxt(filename, savearray, fmt=fmt)
 
     ############################################################################
     # AD taping & derivatives
