@@ -538,24 +538,19 @@ class Annealer(ADmin):
 
         # Store optimization bounds. Will only be used if the chosen
         # optimization routine supports it.
-        if bounds is None:
-            self.bounds = bounds
-        else:
-            self.bounds = np.array(bounds)
-        # properly set up the bounds arrays
         if bounds is not None:
-            bounds_full = []
+            self.bounds = []
             state_b = bounds[:self.D]
             param_b = bounds[self.D:]
             # set bounds on states for all N time points
             for n in xrange(self.N_model):
                 for i in xrange(self.D):
-                    bounds_full.append(state_b[i])
+                    self.bounds.append(state_b[i])
             # set bounds on parameters
             if self.P.ndim == 1:
                 # parameters are static
                 for i in xrange(self.NPest):
-                    bounds_full.append(param_b[i])
+                    self.bounds.append(param_b[i])
             else:
                 # parameters are time-dependent
                 if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
@@ -564,9 +559,9 @@ class Annealer(ADmin):
                     nmax = N_model
                 for n in xrange(self.nmax):
                     for i in xrange(self.NPest):
-                        bounds_full.append(param_b[i])
+                        self.bounds.append(param_b[i])
         else:
-            bounds_full = None
+            self.bounds = None
 
         # Reshape RM and RF so that they span the whole time series.  This is
         # done because in the action evaluation, it is more efficient to let
