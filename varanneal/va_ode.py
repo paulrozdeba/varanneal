@@ -744,7 +744,7 @@ class Annealer(ADmin):
     ################################################################################
     # Routines to save annealing results.
     ################################################################################
-    def save_paths(self, filename):
+    def save_paths(self, filename, dtype=np.float64, fmt="%.8e"):
         """
         Save minimizing paths (not including parameters).
         """
@@ -757,11 +757,11 @@ class Annealer(ADmin):
         savearray = np.dstack((tsave, savearray))
 
         if filename.endswith('.npy'):
-            np.save(filename, savearray)
+            np.save(filename, savearray.astype(dtype))
         else:
-            np.savetxt(filename, savearray)
+            np.savetxt(filename, savearray, fmt=fmt)
 
-    def save_params(self, filename):
+    def save_params(self, filename, dtype=np.float64, fmt="%.8e"):
         """
         Save minimum action parameter values.
         """
@@ -793,11 +793,11 @@ class Annealer(ADmin):
                     savearray[:, :, self.Pidx] = est_param_array
 
         if filename.endswith('.npy'):
-            np.save(filename, savearray)
+            np.save(filename, savearray.astype(dtype))
         else:
-            np.savetxt(filename, savearray)
+            np.savetxt(filename, savearray, fmt=fmt)
 
-    def save_action_errors(self, filename, cmpt=0):
+    def save_action_errors(self, filename, cmpt=0, dtype=np.float64, fmt="%.8e"):
         """
         Save beta values, action, and errors (with/without RM and RF) to file.
         cmpt sets which component of RF0 to normalize by.
@@ -821,9 +821,9 @@ class Annealer(ADmin):
             savearray[:, 4] = self.fe_array / (self.RF0 * self.alpha**self.beta_array)
 
         if filename.endswith('.npy'):
-            np.save(filename, savearray)
+            np.save(filename, savearray.astype(dtype))
         else:
-            np.savetxt(filename, savearray)
+            np.savetxt(filename, savearray, fmt=fmt)
 
     def save_as_minAone(self, savedir='', savefile=None):
         """
