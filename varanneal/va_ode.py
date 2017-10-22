@@ -500,7 +500,7 @@ class Annealer(ADmin):
             self.method = method
 
         # Separate dt_data and dt_model not supported yet if there is an external stimulus.
-        if (dt_model is not None or dt_model != self.dt_data) and self.stim is not None:
+        if dt_model is not None and dt_model != self.dt_data and self.stim is not None:
             print("Error! Separate dt_data and dt_model currently not supported with an " +\
                   "external stimulus. Exiting.")
             exit(1)
