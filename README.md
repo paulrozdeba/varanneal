@@ -14,10 +14,24 @@ VarAnneal requires you have the following software installed on your computer:
 3. SciPy (tested on ≥ 0.18.1).
 4. [PYADOLC](https://github.com/b45ch1/pyadolc)  
 
-The installation instructions for PYADOLC are good, and if you are on a UNIX system then installation is 
-fairly painless (I haven't tried installing this in Windows).  Installing PYADOLC means installing 
-ADOL-C, which also installs some readily available and commonly used libraries like boost and ColPack.  Again, 
-this is fairly automated in PYADOLC, but may require a little tinkering.
+You should follow the installation instructions for PYADOLC in the readme page linked to above.
+If you're running any Linux 
+distribution you should be able to follow the Ubuntu installation instructions with some minor 
+modifications (mostly finding the right packages in your distribution's repository, which may have 
+slightly different names from the Ubuntu repo).
+
+**Caveat:** Building PYADOLC currently fails with boost 1.65.1.  Currently (as of 10/23/17), the newest version 
+of boost available for Ubuntu 17.10 (Artful Aardvark) is 1.62.0.1, so Ubuntu users should not have this 
+problem.  If you are running some other distribution with more up-to-date libraries, like Fedora or 
+Arch Linux, make sure to hold back boost to 1.64.0 at the latest while this issue is resolved.  
+If you are installing in Mac OS with homebrew, you should similarly hold back boost to 
+an older version.  Use these commands to install boost 1.59, and to get your system to properly link to them:
+```bash
+$ brew install boost@1.59
+$ brew install boost-python@1.59
+$ brew link boost@1.59 --force
+$ brew link boost-python@1.59 --force
+```
 
 Once you have this all installed, clone this git repo somewhere on your computer; I usually like putting 
 cloned repos in `~/.local/src`.  There is a setup.py file in the repo so, if you use Anaconda for example, 
@@ -29,7 +43,7 @@ python2 setup.py build
 python2 setup.py install --user
 ```
 and now you should be able to import varanneal from anywhere (repeat this procedure for additional users 
-on the same machine).
+on the same machine).  Note: I plan to get VarAnneal up on PyPI eventually...
 
 ### Usage
 (This example loosely follows the code found in the examples folder in this repository, for the case of 
