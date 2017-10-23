@@ -142,5 +142,8 @@ statistical data assimilation.*  Nonlin. Proc. Geophys. **22**, 205-213 (2015).
 Paul Rozdeba  
 May 23, 2017
 
+### Contributors
+Thanks to Nirag Kadakia and Uriel I. Morone for their contributions to this project.
+
 ### License
 This project is licensed under the MIT license.  See LICENSE for more details.
