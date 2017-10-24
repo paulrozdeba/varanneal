@@ -7,6 +7,19 @@ and model error (deviations of trajectories from the assumed dynamical behavior 
 Derivatives of the cost function are computed using automatic differentiation (AD) as implemented in 
 [PYADOLC](https://github.com/b45ch1/pyadolc), a Python wrapper around [ADOL-C](https://projects.coin-or.org/ADOL-C).  
 
+### Get VarAnneal
+VarAnneal is under constant development.  When you clone this repository, the master branch is the most up-to-date with the most bug fixes, new features, and (hopefully) the fewest bugs; while tags represent previous versions of the code.  You can clone VarAnneal to your computer with the command
+```bash
+$ git clone https://github.com/paulrozdeba/varanneal
+```
+which, when you open the directory, will automatically have the master branch checked out.  You can check out other tags by entering this directory and executing
+```bash
+$ git pull
+$ git fetch --tags
+$ git checkout tags/<tagname>
+```
+where the various tags can be found with `git tags --list`, or in "Branch" dropdown menu near the top of this page.
+
 ### Install
 VarAnneal requires you have the following software installed on your computer:
 1. Python 2 (tested on 2.7.9, probably will work on anything ≥ 2.7).
