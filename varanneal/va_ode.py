@@ -37,6 +37,7 @@ References:
 import numpy as np
 import adolc
 import time
+import sys
 #import scipy.optimize as opt
 from _autodiffmin import ADmin
 
@@ -483,7 +484,17 @@ class Annealer(ADmin):
         for i in beta_array:
             print('------------------------------')
             print('Step %d of %d'%(self.betaidx+1, len(self.beta_array)))
-            print('beta = %d, RF = %.8e'%(self.beta, self.RF))
+            # Print RF
+            if type(self.RF) == np.ndarray:
+                if self.RF.shape == (self.N_model - 1, self.D):
+                    print('beta = %d, RF[n=0, i=0] = %.8e'%(self.beta, self.RF[0, 0]))
+                elif self.RF.shape == (self.N_model - 1, self.D, self.D):
+                    print('beta = %d, RF[n=0, i=0, j=0] = %.8e'%(self.beta, self.RF[0, 0, 0]))
+                else:
+                    print("Error: RF has an invalid shape. You really shouldn't be here...")
+                    sys.exit(1)
+            else:
+                print('beta = %d, RF = %.8e'%(self.beta, self.RF))
             print('')
             self.anneal_step()
 
@@ -503,7 +514,7 @@ class Annealer(ADmin):
         if dt_model is not None and dt_model != self.dt_data and self.stim is not None:
             print("Error! Separate dt_data and dt_model currently not supported with an " +\
                   "external stimulus. Exiting.")
-            exit(1)
+            sys.exit(1)
         else:
             if dt_model is None:
                 self.dt_model = self.dt_data
@@ -576,34 +587,33 @@ class Annealer(ADmin):
                 self.RM = RM
             else:
                 print("ERROR: RM has an invalid shape. Exiting.")
-                exit(1)
+                sys.exit(1)
         else:
             self.RM = RM
-
+        
+        if type(RF0) == list:
+            RF0 = np.array(RF0)
         if type(RF0) == np.ndarray:
             if RF0.shape == (self.D,):
                 self.RF0 = np.resize(RF0, (self.N_model - 1, self.D))
             elif RF0.shape == (self.D, self.D):
                 self.RF0 = np.resize(RF0, (self.N_model - 1, self.D, self.D))
-            elif RF0.shape == (self.N_model - 1, self.D) or \
-                 RF0.shape == (self.N_model - 1, self.D, self.D):
+            elif RF0.shape in [(self.N_model - 1, self.D), (self.N_model - 1, self.D, self.D)]:
                 self.RF0 = RF0
             else:
                 print("ERROR: RF0 has an invalid shape. Exiting.")
-                exit(1)
+                sys.exit(1)
         else:
             self.RF0 = RF0
 
         # set up beta array in RF = RF0 * alpha**beta
         self.alpha = alpha
-        self.beta_array = beta_array
+        self.beta_array = np.array(beta_array, dtype=np.uint16)
         self.betaidx = 0
         self.beta = self.beta_array[self.betaidx]
         self.Nbeta = len(self.beta_array)
 
-        # set current RF
-        if RF0 is not None:
-            self.RF0 = RF0
+        # set initial RF
         self.RF = self.RF0 * self.alpha**self.beta
 
         # set the desired action
