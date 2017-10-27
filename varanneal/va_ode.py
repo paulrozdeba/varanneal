@@ -455,16 +455,19 @@ class Annealer(ADmin):
     ############################################################################
     def anneal(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, dt_model=None,
                init_to_data=True, action='A_gaussian', disc='trapezoid', 
-               method='L-BFGS-B', bounds=None, opt_args=None, adolcID=0):
+               method='L-BFGS-B', bounds=None, opt_args=None, adolcID=0,
+               track_paths=None, track_params=None, track_action_errors=None):
         """
         Convenience function to carry out a full annealing run over all values
         of beta in beta_array.
         """
-        # initialize the annealing procedure, if not already done
+        # Initialize the annealing procedure, if not already done.
         if self.annealing_initialized == False:
             self.anneal_init(X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, dt_model,
                              init_to_data, action, disc, method, bounds,
                              opt_args, adolcID)
+
+        # Loop through all beta values for annealing.
         for i in beta_array:
             print('------------------------------')
             print('Step %d of %d'%(self.betaidx+1, len(self.beta_array)))
@@ -480,7 +483,47 @@ class Annealer(ADmin):
             else:
                 print('beta = %d, RF = %.8e'%(self.beta, self.RF))
             print('')
+
             self.anneal_step()
+
+            # Track progress by saving to file after every step
+            if track_paths is not None:
+                try:
+                    dtype = track_paths['dtype']
+                except:
+                    dtype = np.float64
+                try:
+                    fmt = track_paths['fmt']
+                except:
+                    fmt = "%.8e"
+                self.save_paths(track_paths['filename'], dtype, fmt)
+
+            if track_params is not None:
+                try:
+                    dtype = track_params['dtype']
+                except:
+                    dtype = np.float64
+                try:
+                    fmt = track_params['fmt']
+                except:
+                    fmt = "%.8e"
+                self.save_params(track_params['filename'], dtype, fmt)
+
+            if track_action_errors is not None:
+                try:
+                    cmpt = track_action_errors['cmpt']
+                except:
+                    cmpt = 0
+                try:
+                    dtype = track_action_errors['dtype']
+                except:
+                    dtype = np.float64
+                try:
+                    fmt = track_action_errors['fmt']
+                except:
+                    fmt = "%.8e"
+                self.save_action_errors(track_action_errors['filename'], cmpt, dtype, fmt)
+            
 
     def anneal_init(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, dt_model=None,
                     init_to_data=True, action='A_gaussian', disc='trapezoid',
