@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='varanneal',
-      version='0.1',
+      version='0.1.4',
       description='Variational annealing (VA) for state and parameter ' +\
       'estimation in partially observed systems.',
       url='http://github.com/paulrozdeba/varanneal',
