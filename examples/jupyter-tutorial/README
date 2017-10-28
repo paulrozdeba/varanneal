@@ -1,0 +1,20 @@
+Running this tutorial requires that you have VarAnneal installed first, 
+as well as Matplotlib and Jupyter Notebook (formerly IPython Notebook). 
+You need to be running Jupyter Notebook with a Python 2.x kernel.
+
+Each example will run a *single* instance of VarAnneal.  For those who wish 
+to run many path space initializations in parallel on an SGE cluster, follow 
+along with the cluster code in the nnet_barimages example for now (also in 
+the examples folder in this repo).
+
+The Lorenz 96 example estimates unmeasured states and the forcing parameter 
+from data, a sample of which is contained in the Lorenz96 folder here.  You can 
+modify D (dimension of model), and the measured indices in the notebook itself.
+
+The NaKL example estimates the gating variables and parameters in an NaKL model 
+(Hodgkin-Huxley-like conductance based model) from voltage data, with a known 
+injected current stimulus.  Again, data and stimulus files are contained here.
+
+The MNIST example trains a 3-layer perceptron on MNIST image data.  The MNIST 
+data needs to be downloaded, for now, from Paul Rozdeba's UCSD Google Drive 
+account.  Just follow the instructions in the MNIST/MNIST_data folder.

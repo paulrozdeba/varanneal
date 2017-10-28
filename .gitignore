@@ -13,3 +13,6 @@ varanneal.egg-info
 
 */.ipynb-checkpoints
 .ipynb_checkpoints
+
+!examples/jupyter-tutorial/Lorenz96/data/*
+!examples/jupyter-tutorial/NaKL/data/*

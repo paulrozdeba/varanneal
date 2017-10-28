@@ -1,0 +1,7 @@
+For now, the MNIST data (in a VarAnneal-friendly format) is hosted on 
+Paul Rozdeba's UCSD Google Drive account.  To download it, follow this link:
+
+https://drive.google.com/open?id=0BxxeCT5lN53VRW1ISVpRRGxkLTQ
+
+Extract the contents of the file mnistdata_varanneal.tar.gz into this 
+directory (should be a collection of .npy files).
