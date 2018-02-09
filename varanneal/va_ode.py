@@ -39,6 +39,7 @@ import adolc
 import time
 import sys
 from _autodiffmin import ADmin
+from _autodiffipopt import ADipopt
 
 class Annealer(ADmin):
     """
@@ -46,12 +47,18 @@ class Annealer(ADmin):
     assimilation using VA.  It inherits the function minimization routines
     from ADmin, which uses automatic differentiation.
     """
-    def __init__(self):
+    def __init__(self, ipopt_flag=False):
         """
         Constructor for the Annealer class.
+        - Set ipopt_flag = True if you plan to use IPOPT for optimization.
         """
-        self.taped = False
-        self.annealing_initialized = False
+        self.A_taped = False  # Action not yet taped
+        self.annealing_initialized = False  # Annealing (hyper)parameters not yet initialized
+
+        self.ipopt_flag = ipopt_flag  # Are you using IPOPT?
+        if self.ipopt_flag:
+            self.ipopt_g_taped = False  # Constraints not yet taped
+            self.ipopt_lgr_taped = False  # Lagrangian not yet taped
 
     def set_model(self, f, D):
         """
@@ -780,7 +787,7 @@ class Annealer(ADmin):
 
         # set flags indicating that A needs to be retaped, and that we're no
         # longer at the beginning of the annealing procedure
-        self.taped = False
+        self.A_taped = False
         if self.annealing_initialized:
             # Indicate no longer at beta_0
             self.initialized = False
