@@ -38,9 +38,10 @@ import numpy as np
 import adolc
 import time
 import sys
+import default_actions
 from _autodiffmin import ADmin
 
-class Annealer(ADmin):
+class Annealer(object):
     """
     Annealer is the main object type for performing variational data
     assimilation using VA.  It inherits the function minimization routines
@@ -52,6 +53,15 @@ class Annealer(ADmin):
         """
         self.taped = False
         self.annealing_initialized = False
+
+    def set_action(self, action):
+        """
+        Set the action function.
+        action should be a callable class instantiation; see default_actions
+        for some examples.  It must be properly instantiated and ready to go
+        BEFORE being loaded in here.
+        """
+        self.A = action
 
     def set_model(self, f, D):
         """
@@ -531,6 +541,13 @@ class Annealer(ADmin):
         """
         Initialize the annealing procedure.
         """
+        if action == 'A_gaussian':
+            self.A = default_actions.GaussianAction(self.N_model, self.D, self.merr_nskip,
+                                                    len(Lidx), Lidx, self.Y, RM, self.N_data,
+                                                    P0, len(P0), len(Pidx), disc, RF0,
+                                                    self.stim, self.f, self.t_model,
+                                                    self.dt_model)
+
         if method not in ('L-BFGS-B', 'NCG', 'LM', 'TNC'):
             print("ERROR: Optimization routine not recognized. Annealing not initialized.")
             return None

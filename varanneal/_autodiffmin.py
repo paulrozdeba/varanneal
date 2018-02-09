@@ -18,13 +18,16 @@ class ADmin(object):
     ADmin is an object type for using AD ad implemented in ADOL-C to minimize
     arbitrary scalar functions, i.e. functions f s.t. f: R^N --> R.
     """
-    def __init__(self):
+    def __init__(self, A, opt_args=None, bounds=None, adolcID=0):
         """
         These routines are the same for all system types and their variables
         are set in the Annealer objects which inherit ADmin, so nothing special
         to do here really.
         """
-        pass
+        self.A = A
+        self.opt_args = opt_args
+        self.bounds = bounds
+        self.adolcID = adolcID
 
     ############################################################################
     # AD taping & derivatives
