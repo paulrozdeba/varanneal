@@ -130,336 +130,6 @@ class Annealer(object):
             else:
                 self.stim = None
 
-
-    ############################################################################
-    # Gaussian action
-    ############################################################################
-    def A_gaussian(self, XP):
-        """
-        Calculate the value of the Gaussian action.
-        """
-        merr = self.me_gaussian(XP[:self.N_model*self.D])
-        ferr = self.fe_gaussian(XP)
-        return merr + ferr
-
-    def me_gaussian(self, X):
-        """
-        Gaussian measurement error.
-        """
-        x = np.reshape(X, (self.N_model, self.D))
-        diff = x[::self.merr_nskip, self.Lidx] - self.Y
-
-        if type(self.RM) == np.ndarray:
-            # Contract RM with error
-            if self.RM.shape == (self.N_data, self.L):
-                merr = np.sum(self.RM * diff * diff)
-            elif self.RM.shape == (self.N_data, self.L, self.L):
-                merr = 0.0
-                for i in xrange(self.N_data):
-                    merr = merr + np.dot(diff[i], np.dot(self.RM[i], diff[i]))
-            else:
-                print("ERROR: RM is in an invalid shape.")
-        else:
-            merr = self.RM * np.sum(diff * diff)
-
-        return merr / (self.L * self.N_data)
-
-    def fe_gaussian(self, XP):
-        """
-        Gaussian model error.
-        """
-        # Extract state and parameters from XP.
-        if self.NPest == 0:
-            x = np.reshape(XP, (self.N_model, self.D))
-            p = self.P
-        elif self.NPest == self.NP:
-            x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
-            if self.P.ndim == 1:
-                p = XP[self.N_model*self.D:]
-            else:
-                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
-                    p = np.reshape(XP[self.N_model*self.D:], (self.N_model - 1, self.NPest))
-                else:
-                    p = np.reshape(XP[self.N_model*self.D:], (self.N_model, self.NPest))
-        else:
-            x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
-            p = np.array(self.P, dtype=XP.dtype)
-            if self.P.ndim == 1:
-                p[self.Pidx] = XP[self.N_model*self.D:]
-            else:
-                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
-                    p[:, self.Pidx] = np.reshape(XP[self.N_model*self.D:],
-                                                 (self.N_model-1, self.NPest))
-                else:
-                    p[:, self.Pidx] = np.reshape(XP[self.N_model*self.D:],
-                                                 (self.N_model, self.NPest))
-
-        # Start calculating the model error.
-        # First compute time series of error terms.
-        if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-            disc_vec1, disc_vec2 = self.disc(x, p)
-            diff1 = x[2::2] - x[:-2:2] - disc_vec1
-            diff2 = x[1::2] - disc_vec2
-        elif self.disc.im_func.__name__ == 'disc_forwardmap':
-            diff = x[1:] - self.disc(x, p)
-        else:
-            diff = x[1:] - x[:-1] - self.disc(x, p)
-
-        # Contract errors quadratically with RF.
-        if type(self.RF) == np.ndarray:
-            if self.RF.shape == (self.N_model - 1, self.D):
-                if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-                    ferr1 = np.sum(self.RF[::2] * diff1 * diff1)
-                    ferr2 = np.sum(self.RF[1::2] * diff2 * diff2)
-                    ferr = ferr1 + ferr2
-                else:
-                    ferr = np.sum(self.RF * diff * diff)
-
-            elif self.RF.shape == (self.N_model - 1, self.D, self.D):
-                if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-                    ferr1 = 0.0
-                    ferr2 = 0.0
-                    for i in xrange((self.N_model - 1) / 2):
-                        ferr1 = ferr1 + np.dot(diff1[i], np.dot(self.RF[2*i], diff1[i]))
-                        ferr2 = ferr2 + np.dot(diff2[i], np.dot(self.RF[2*i+1], diff2[i]))
-                    ferr = ferr1 + ferr2
-                else:
-                    ferr = 0.0
-                    for i in xrange(self.N_model - 1):
-                        ferr = ferr + np.dot(diff[i], np.dot(self.RF[i], diff))
-
-            else:
-                print("ERROR: RF is in an invalid shape. Exiting.")
-                sys.exit(1)
-
-        else:
-            if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-                ferr = self.RF * np.sum(diff1 * diff1 + diff2 * diff2)
-            else:
-                ferr = self.RF * np.sum(diff * diff)
-
-        return ferr / (self.D * (self.N_model - 1))
-
-    #def vecA_gaussian(self, XP):
-    #    """
-    #    Vector-like terms of the Gaussian action.
-    #    This is here primarily for Levenberg-Marquardt.
-    #    """
-    #    if self.NPest == 0:
-    #        x = np.reshape(XP, (self.N_model, self.D))
-    #        p = self.P
-    #    elif self.NPest == self.NP:
-    #        x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
-    #        if self.P.ndim == 1:
-    #            p = XP[self.N_model*self.D:]
-    #        else:
-    #            p = np.reshape(XP[self.N_model*self.D:], (self.N_model, self.NPest))
-    #    else:
-    #        x = np.reshape(XP[:self.N_model*self.D], (self.N_model, self.D))
-    #        p = []
-    #        if self.P.ndim == 1:
-    #            j = self.NPest
-    #            for i in xrange(self.NP):
-    #                if i in self.Pidx:
-    #                    p.append(XP[-j])
-    #                    j -= 1
-    #                else:
-    #                    p.append(self.P[i])
-    #        else:
-    #            j = self.N_model * self.NPest
-    #            for n in xrange(self.N_model):
-    #                pn = []
-    #                for i in xrange(self.NP):
-    #                    if i in self.Pidx:
-    #                        pn.append(XP[-j])
-    #                        j -= 1
-    #                    else:
-    #                        pn.append(self.P[n, i])
-    #                p.append(pn)
-    #    p = np.array(p)
-    #
-    #    # Evaluate the vector-like terms of the action.
-    #    # Measurement error
-    #    diff = x[::self.merr_nskip, self.Lidx] - self.Y
-    #
-    #    if type(self.RM) == np.ndarray:
-    #        # Contract RM with error
-    #        if self.RM.shape == (self.N, self.L):
-    #            merr = self.RM * diff
-    #        elif self.RM.shape == (self.N, self.L, self.L):
-    #            merr = np.zeros_like(diff)
-    #            for i in xrange(self.N):
-    #                merr[i] = np.dot(self.RM[i], diff[i])
-    #        else:
-    #            print("ERROR: RM is in an invalid shape.")
-    #    else:
-    #        merr = self.RM * diff
-    #
-    #    # Model error
-    #    if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-    #        #disc_vec = self.disc(x, p)
-    #        disc_vec1, disc_vec2 = self.disc(x, p)
-    #        diff1 = x[2::2] - x[:-2:2] - disc_vec1
-    #        diff2 = x[1::2] - disc_vec2
-    #    elif self.disc.im_func.__name__ == 'disc_forwardmap':
-    #        diff = x[1:] - self.disc(x, p)
-    #    else:
-    #        diff = x[1:] - x[:-1] - self.disc(x, p)
-    #
-    #    if type(self.RF) == np.ndarray:
-    #        # Contract RF with the model error time series terms
-    #        if self.RF.shape == (self.N - 1, self.D):
-    #            if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-    #                ferr1 = self.RF[::2] * diff1
-    #                ferr2 = self.RF[1::2] * diff2
-    #                ferr = np.append(ferr1, ferr2)
-    #            else:
-    #                ferr = self.RF * diff
-    #
-    #        elif self.RF.shape == (self.N - 1, self.D, self.D):
-    #            if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-    #                ferr1 = np.zeros_like(diff1)
-    #                ferr2 = np.zeros_like(diff2)
-    #                for i in xrange((self.N - 1) / 2):
-    #                    ferr1[i] = self.RF[2*i] * diff1[i]
-    #                    ferr2[i] = self.RF[2*i + 1] * diff2[i]
-    #                ferr = np.append(ferr1, ferr2)
-    #            else:
-    #                ferr = np.zeros_like(diff)
-    #                for i in xrange(self.N - 1):
-    #                    ferr[i] = np.dot(self.RF[i], diff)
-    #
-    #        else:
-    #            print("ERROR: RF is in an invalid shape.")
-    #
-    #    else:
-    #        if self.disc.im_func.__name__ == "disc_SimpsonHermite":
-    #            ferr1 = self.RF * diff1
-    #            ferr2 = self.RF * diff2
-    #            ferr = np.append(ferr1, ferr2)
-    #        else:
-    #            ferr = self.RF * diff
-    #
-    #    return np.append(merr/(self.N * self.L), ferr/((self.N - 1) * self.D))
-
-    ############################################################################
-    # Discretization routines
-    ############################################################################
-    def disc_euler(self, x, p):
-        """
-        Euler's method for time discretization of f.
-        """
-        if self.stim is None:
-            if self.P.ndim == 1:
-                pn = p
-            else:
-                pn = p[:-1]
-        else:
-            if self.P.ndim == 1:
-                pn = (p, self.stim[:-1])
-            else:
-                pn = (p[:-1], self.stim[:-1])
-
-        return self.dt_model * self.f(self.t_model[:-1], x[:-1], pn)
-
-    def disc_trapezoid(self, x, p):
-        """
-        Time discretization for the action using the trapezoid rule.
-        """
-        if self.stim is None:
-            if self.P.ndim == 1:
-                pn = p
-                pnp1 = p
-            else:
-                pn = p[:-1]
-                pnp1 = p[1:]
-        else:
-            if self.P.ndim == 1:
-                pn = (p, self.stim[:-1])
-                pnp1 = (p, self.stim[1:])
-            else:
-                pn = (p[:-1], self.stim[:-1])
-                pnp1 = (p[1:], self.stim[1:])
-
-        fn = self.f(self.t_model[:-1], x[:-1], pn)
-        fnp1 = self.f(self.t_model[1:], x[1:], pnp1)
-
-        return self.dt_model * (fn + fnp1) / 2.0
-
-    #Don't use RK4 yet, still trying to decide how to implement with a stimulus.
-    #def disc_rk4(self, x, p):
-    #    """
-    #    RK4 time discretization for the action.
-    #    """
-    #    if self.stim is None:
-    #        pn = p
-    #        pmid = p
-    #        pnp1 = p
-    #    else:
-    #        pn = (p, self.stim[:-2:2])
-    #        pmid = (p, self.stim[1:-1:2])
-    #        pnp1 = (p, self.stim[2::2])
-    #
-    #    xn = x[:-1]
-    #    tn = np.tile(self.t[:-1], (self.D, 1)).T
-    #    k1 = self.f(tn, xn, pn)
-    #    k2 = self.f(tn + self.dt/2.0, xn + k1*self.dt/2.0, pmid)
-    #    k3 = self.f(tn + self.dt/2.0, xn + k2*self.dt/2.0, pmid)
-    #    k4 = self.f(tn + self.dt, xn + k3*self.dt, pnp1)
-    #    return self.dt * (k1 + 2.0*k2 + 2.0*k3 + k4)/6.0
-
-    def disc_SimpsonHermite(self, x, p):
-        """
-        Simpson-Hermite time discretization for the action.
-        This discretization applies Simpson's rule to all the even-index time
-        points, and a Hermite polynomial interpolation for the odd-index points
-        in between.
-        """
-        if self.stim is None:
-            if self.P.ndim == 1:
-                pn = p
-                pmid = p
-                pnp1 = p
-            else:
-                pn = p[:-2:2]
-                pmid = p[1:-1:2]
-                pnp1 = p[2::2]
-        else:
-            if self.P.ndim == 1:
-                pn = (p, self.stim[:-2:2])
-                pmid = (p, self.stim[1:-1:2])
-                pnp1 = (p, self.stim[2::2])
-            else:
-                pn = (p[:-2:2], self.stim[:-2:2])
-                pmid = (p[1:-1:2], self.stim[1:-1:2])
-                pnp1 = (p[2::2], self.stim[2::2])
-
-        fn = self.f(self.t_model[:-2:2], x[:-2:2], pn)
-        fmid = self.f(self.t_model[1:-1:2], x[1:-1:2], pmid)
-        fnp1 = self.f(self.t_model[2::2], x[2::2], pnp1)
-
-        disc_vec1 = (fn + 4.0*fmid + fnp1) * (2.0*self.dt_model)/6.0
-        disc_vec2 = (x[:-2:2] + x[2::2])/2.0 + (fn - fnp1) * (2.0*self.dt_model)/8.0
-
-        return disc_vec1, disc_vec2
-
-    def disc_forwardmap(self, x, p):
-        """
-        "Discretization" when f is a forward mapping, not an ODE.
-        """
-        if self.stim is None:
-            if self.P.ndim == 1:
-                pn = p
-            else:
-                pn = p[:-1]
-        else:
-            if self.P.ndim == 1:
-                pn = (p, self.stim[:-1])
-            else:
-                 pn = (p[:-1], self.stim[:-1])
-
-        return self.f(self.t_model[:-1], x[:-1], pn)
-
     ############################################################################
     # Annealing functions
     ############################################################################
@@ -541,12 +211,89 @@ class Annealer(object):
         """
         Initialize the annealing procedure.
         """
+        # set up beta array in RF = RF0 * alpha**beta
+        self.alpha = alpha
+        self.beta_array = np.array(beta_array, dtype=np.uint16)
+        self.Nbeta = len(self.beta_array)
+
         if action == 'A_gaussian':
+            # Separate dt_data and dt_model not supported yet if there is an external stimulus.
+            if dt_model is not None and dt_model != self.dt_data and self.stim is not None:
+                print("Error! Separate dt_data and dt_model currently not supported with an " +\
+                      "external stimulus. Exiting.")
+                sys.exit(1)
+            else:
+                if dt_model is None:
+                    self.dt_model = self.dt_data
+                    self.N_model = self.N_data
+                    self.merr_nskip = 1
+                    self.t_model = np.copy(self.t_data)
+                else:
+                    self.dt_model = dt_model
+                    self.merr_nskip = int(self.dt_data / self.dt_model)
+                    self.N_model = (self.N_data - 1) * self.merr_nskip + 1
+                    self.t_model = np.linspace(self.t_data[0], self.t_data[-1], self.N_model)
+
+            # set up parameters and determine if static or time series
+            self.P = P0
+            if P0.ndim == 1:
+                # Static parameters, so p is a single vector.
+                self.NP = len(P0)
+            else:
+                # Time-dependent parameters, so p is a time series of N values.
+                self.NP = P0.shape[1]
+
+            # get indices of parameters to be estimated by annealing
+            self.Pidx = Pidx
+            self.NPest = len(Pidx)
+
+            # get indices of measured components of f
+            self.Lidx = Lidx
+            self.L = len(Lidx)
+
+            # Reshape RM and RF so that they span the whole time series, if they
+            # are passed in as vectors or matrices. This is done because in the
+            # action evaluation, it is more efficient to let numpy handle
+            # multiplication over time rather than using python loops.
+            # If RM or RF is already passed in as a time series, move on!
+            if type(RM) == list:
+                RM = np.array(RM)
+            if type(RM) == np.ndarray:
+                if RM.shape == (self.L,):
+                    self.RM = np.resize(RM, (self.N_data, self.L))
+                elif RM.shape == (self.L, self.L):
+                    self.RM = np.resize(RM, (self.N_data, self.L, self.L))
+                elif RM.shape in [(self.N_data, self.L), (self.N_data, self.L, self.L)]:
+                    self.RM = RM
+                else:
+                    print("ERROR: RM has an invalid shape. Exiting.")
+                    sys.exit(1)
+            else:
+                self.RM = RM
+
+            if type(RF0) == list:
+                RF0 = np.array(RF0)
+            if type(RF0) == np.ndarray:
+                if RF0.shape == (self.D,):
+                    self.RF0 = np.resize(RF0, (self.N_model - 1, self.D))
+                elif RF0.shape == (self.D, self.D):
+                    self.RF0 = np.resize(RF0, (self.N_model - 1, self.D, self.D))
+                elif RF0.shape in [(self.N_model - 1, self.D), (self.N_model - 1, self.D, self.D)]:
+                    self.RF0 = RF0
+                else:
+                    print("ERROR: RF0 has an invalid shape. Exiting.")
+                    sys.exit(1)
+            else:
+                self.RF0 = RF0
+
+            # set initial RF
+            self.betaidx = 0
+            self.beta = self.beta_array[self.betaidx]
+            self.RF = self.RF0 * self.alpha**self.beta
+
             self.A = default_actions.GaussianAction(self.N_model, self.D, self.merr_nskip,
-                                                    len(Lidx), Lidx, self.Y, RM, self.N_data,
-                                                    P0, len(P0), len(Pidx), disc, RF0,
-                                                    self.stim, self.f, self.t_model,
-                                                    self.dt_model)
+                    len(Lidx), Lidx, self.Y, RM, self.N_data, P0, len(P0), len(Pidx),
+                    disc, RF0, self.stim, self.f, self.t_model, self.dt_model)
 
         if method not in ('L-BFGS-B', 'NCG', 'LM', 'TNC'):
             print("ERROR: Optimization routine not recognized. Annealing not initialized.")
@@ -554,42 +301,8 @@ class Annealer(object):
         else:
             self.method = method
 
-        # Separate dt_data and dt_model not supported yet if there is an external stimulus.
-        if dt_model is not None and dt_model != self.dt_data and self.stim is not None:
-            print("Error! Separate dt_data and dt_model currently not supported with an " +\
-                  "external stimulus. Exiting.")
-            sys.exit(1)
-        else:
-            if dt_model is None:
-                self.dt_model = self.dt_data
-                self.N_model = self.N_data
-                self.merr_nskip = 1
-                self.t_model = np.copy(self.t_data)
-            else:
-                self.dt_model = dt_model
-                self.merr_nskip = int(self.dt_data / self.dt_model)
-                self.N_model = (self.N_data - 1) * self.merr_nskip + 1
-                self.t_model = np.linspace(self.t_data[0], self.t_data[-1], self.N_model)
-
         # get optimization extra arguments
         self.opt_args = opt_args
-
-        # set up parameters and determine if static or time series
-        self.P = P0
-        if P0.ndim == 1:
-            # Static parameters, so p is a single vector.
-            self.NP = len(P0)
-        else:
-            # Time-dependent parameters, so p is a time series of N values.
-            self.NP = P0.shape[1]
-
-        # get indices of parameters to be estimated by annealing
-        self.Pidx = Pidx
-        self.NPest = len(Pidx)
-
-        # get indices of measured components of f
-        self.Lidx = Lidx
-        self.L = len(Lidx)
 
         # Store optimization bounds. Will only be used if the chosen
         # optimization routine supports it.
@@ -617,64 +330,6 @@ class Annealer(object):
                         self.bounds.append(param_b[i])
         else:
             self.bounds = None
-
-        # Reshape RM and RF so that they span the whole time series, if they
-        # are passed in as vectors or matrices. This is done because in the
-        # action evaluation, it is more efficient to let numpy handle
-        # multiplication over time rather than using python loops.
-        # If RM or RF is already passed in as a time series, move on!
-        if type(RM) == list:
-            RM = np.array(RM)
-        if type(RM) == np.ndarray:
-            if RM.shape == (self.L,):
-                self.RM = np.resize(RM, (self.N_data, self.L))
-            elif RM.shape == (self.L, self.L):
-                self.RM = np.resize(RM, (self.N_data, self.L, self.L))
-            elif RM.shape in [(self.N_data, self.L), (self.N_data, self.L, self.L)]:
-                self.RM = RM
-            else:
-                print("ERROR: RM has an invalid shape. Exiting.")
-                sys.exit(1)
-        else:
-            self.RM = RM
-
-        if type(RF0) == list:
-            RF0 = np.array(RF0)
-        if type(RF0) == np.ndarray:
-            if RF0.shape == (self.D,):
-                self.RF0 = np.resize(RF0, (self.N_model - 1, self.D))
-            elif RF0.shape == (self.D, self.D):
-                self.RF0 = np.resize(RF0, (self.N_model - 1, self.D, self.D))
-            elif RF0.shape in [(self.N_model - 1, self.D), (self.N_model - 1, self.D, self.D)]:
-                self.RF0 = RF0
-            else:
-                print("ERROR: RF0 has an invalid shape. Exiting.")
-                sys.exit(1)
-        else:
-            self.RF0 = RF0
-
-        # set up beta array in RF = RF0 * alpha**beta
-        self.alpha = alpha
-        self.beta_array = np.array(beta_array, dtype=np.uint16)
-        self.Nbeta = len(self.beta_array)
-
-        # set initial RF
-        self.betaidx = 0
-        self.beta = self.beta_array[self.betaidx]
-        self.RF = self.RF0 * self.alpha**self.beta
-
-        # set the desired action
-        #if self.method == 'LM':
-        #    # Levenberg-Marquardt requires a "vector action"
-        #    self.A = self.vecA_gaussian
-        if type(action) == str:
-            exec 'self.A = self.%s'%(action)
-        else:
-            # Assumption: user has passed a function pointer
-            self.A = action
-
-        # set the discretization
-        exec 'self.disc = self.disc_%s'%(disc,)
 
         # array to store minimizing paths
         if P0.ndim == 1:
