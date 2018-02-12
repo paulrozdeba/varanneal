@@ -84,11 +84,14 @@ class Annealer(ADmin):
         self.dt_data = self.t_data[1] - self.t_data[0]
         self.Y = data[:, 1:]
 
-        if stim_file.endswith('npy'):
-            s = np.load(stim_file)
+        if stim_file is not None:
+            if stim_file.endswith('npy'):
+                s = np.load(stim_file)
+            else:
+                s = np.loadtxt(stim_file)
+            self.stim = s[:, 1:]
         else:
-            s = np.loadtxt(stim_file)
-        self.stim = s[:, 1:]
+            self.stim = None
 
         self.dt_data = dt_data
 
