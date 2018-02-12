@@ -53,6 +53,7 @@ class Annealer(object):
         """
         self.taped = False
         self.annealing_initialized = False
+        self.dt_model = None
 
     def set_action(self, action):
         """
@@ -63,7 +64,7 @@ class Annealer(object):
         """
         self.A = action
 
-    def set_model(self, f, D):
+    def set_model(self, f, D, dt_model=None):
         """
         Set the D-dimensional dynamical model for the estimated system.
         The model function, f, must take arguments in the following order:
@@ -72,9 +73,15 @@ class Annealer(object):
             t, x, (p, stim)
         where x and stim are at the "current" time t.  Thus, x should be a
         D-dimensional vector, and stim similarly a D_stim-dimensional vector.
+
+        For now, dt_model can optionally be defined here or in anneal_init.
+        In future versions of the code, dt_model will probably be removed
+        from the inputs of anneal_init and required to be passed in here.
         """
         self.f = f
         self.D = D
+        if dt_model is not None:
+            self.dt_model = dt_model
 
     def set_data_fromfile(self, data_file, stim_file=None, nstart=0, N=None):
         """
@@ -223,7 +230,7 @@ class Annealer(object):
                       "external stimulus. Exiting.")
                 sys.exit(1)
             else:
-                if dt_model is None:
+                if dt_model is None and self.dt_model is None:
                     self.dt_model = self.dt_data
                     self.N_model = self.N_data
                     self.merr_nskip = 1
@@ -370,6 +377,9 @@ class Annealer(object):
         # set the adolcID
         self.adolcID = adolcID
 
+        # Finally, initialize an ADmin instance
+        self.minimizer = ADmin(self.A, self.opt_args, self.bounds, self.adolcID)
+
         # Initialization successful, we're at the beta = beta_0 step now.
         self.initalized = True
 
@@ -401,11 +411,14 @@ class Annealer(object):
                     XP0 = np.append(X0, P0)
 
             if self.method == 'L-BFGS-B':
-                XPmin, Amin, exitflag = self.min_lbfgs_scipy(XP0, self.gen_xtrace())
+                XPmin, Amin, exitflag, self.taped = \
+                    self.minimizer.min_lbfgs_scipy(XP0, self.gen_xtrace(), self.taped)
             elif self.method == 'NCG':
-                XPmin, Amin, exitflag = self.min_cg_scipy(XP0, self.gen_xtrace())
+                XPmin, Amin, exitflag, self.taped = \
+                    self.minimizer.min_cg_scipy(XP0, self.gen_xtrace(), self.taped)
             elif self.method == 'TNC':
-                XPmin, Amin, exitflag = self.min_tnc_scipy(XP0, self.gen_xtrace())
+                XPmin, Amin, exitflag , self.taped = \
+                    self.minimizer.min_tnc_scipy(XP0, self.gen_xtrace(), self.taped)
             #elif self.method == 'LM':
             #    XPmin, Amin, exitflag = self.min_lm_scipy(XP0)
             else:
