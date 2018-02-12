@@ -18,13 +18,16 @@ class ADmin(object):
     ADmin is an object type for using AD ad implemented in ADOL-C to minimize
     arbitrary scalar functions, i.e. functions f s.t. f: R^N --> R.
     """
-    def __init__(self):
+    def __init__(self, A, opt_args=None, bounds=None, adolcID=0):
         """
         These routines are the same for all system types and their variables
         are set in the Annealer objects which inherit ADmin, so nothing special
         to do here really.
         """
-        pass
+        self.A = A
+        self.opt_args = opt_args
+        self.bounds = bounds
+        self.adolcID = adolcID
 
     ############################################################################
     # AD taping & derivatives
@@ -44,7 +47,6 @@ class ADmin(object):
         af = self.A(ax)
         adolc.dependent(af)
         adolc.trace_off()
-        self.taped = True
         print('Done!')
         print('Time = {0} s\n'.format(time.time()-tstart))
 
@@ -69,15 +71,16 @@ class ADmin(object):
     ################################################################################
     # Minimization functions
     ################################################################################
-    def min_lbfgs_scipy(self, XP0, xtrace=None):
+    def min_lbfgs_scipy(self, XP0, xtrace=None, taped=False):
         """
         Minimize f starting from XP0 using L-BFGS-B method in scipy.
         This method supports the use of bounds.
         Returns the minimizing state, the minimum function value, and the L-BFGS
         termination information.
         """
-        if self.taped == False:
+        if not taped:
             self.tape_A(xtrace)
+            taped = True
 
         # start the optimization
         print("Beginning optimization...")
@@ -92,16 +95,17 @@ class ADmin(object):
         print("Exit message: {0}".format(res.message))
         print("Iterations = {0}".format(res.nit))
         print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status
+        return XPmin, Amin, status, taped
 
-    def min_cg_scipy(self, XP0, xtrace=None):
+    def min_cg_scipy(self, XP0, xtrace=None, taped=False):
         """
         Minimize f starting from XP0 using nonlinear CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
-        if self.taped == False:
+        if not taped:
             self.tape_A(xtrace)
+            taped = True
 
         # start the optimization
         print("Beginning optimization...")
@@ -116,16 +120,17 @@ class ADmin(object):
         print("Exit message: {0}".format(res.message))
         print("Iterations = {0}".format(res.nit))
         print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status
+        return XPmin, Amin, status, taped
 
-    def min_tnc_scipy(self, XP0, xtrace=None):
+    def min_tnc_scipy(self, XP0, xtrace=None, taped=False):
         """
         Minimize f starting from XP0 using Newton-CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
-        if self.taped == False:
+        if not taped:
             self.tape_A(xtrace)
+            taped = True
 
         # start the optimization
         print("Beginning optimization...")
@@ -140,16 +145,17 @@ class ADmin(object):
         print("Exit message: {0}".format(res.message))
         print("Iterations = {0}".format(res.nit))
         print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status
+        return XPmin, Amin, status, taped
 
-    def min_lm_scipy(self, XP0, xtrace=None):
+    def min_lm_scipy(self, XP0, xtrace=None, taped=False):
         """
         Minimize f starting from XP0 using Levenberg-Marquardt in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
-        if self.taped == False:
+        if not taped:
             self.tape_A(xtrace)
+            taped = True
 
         # start the optimization
         print("Beginning optimization...")
@@ -165,7 +171,7 @@ class ADmin(object):
         print("Exit message: {0}".format(res.message))
         print("Iterations = {0}".format(res.nit))
         print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status
+        return XPmin, Amin, status, taped
 
     #def min_lm_scipy(self, XP0):
     #    """
