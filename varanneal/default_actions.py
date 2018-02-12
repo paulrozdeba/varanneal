@@ -21,12 +21,19 @@ class GaussianAction(object):
         self.P = P
         self.NP = NP
         self.NPest = NPest
-        self.disc = disc
+        self.disc_str = disc
         self.RF = RF
         self.stim = stim
         self.f = f
         self.t_model = t_model
         self.dt_model = dt_model
+
+        exec "self.disc = self.disc_%s" % (self.disc_str)
+
+        # All actions must have measurement and model error functions called
+        # meas_err and model_err, respectively.
+        self.meas_err = self.me_gaussian
+        self.model_err = self.fe_gaussian
 
     ############################################################################
     # Function definition

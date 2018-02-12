@@ -258,6 +258,10 @@ class Annealer(object):
             self.Lidx = Lidx
             self.L = len(Lidx)
 
+            # initialize observed state components to data if desired
+            if init_to_data == True:
+                X0[::self.merr_nskip, self.Lidx] = self.Y[:]
+
             # Reshape RM and RF so that they span the whole time series, if they
             # are passed in as vectors or matrices. This is done because in the
             # action evaluation, it is more efficient to let numpy handle
@@ -328,7 +332,8 @@ class Annealer(object):
                     self.bounds.append(param_b[i])
             else:
                 # parameters are time-dependent
-                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                #if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                if self.disc in ['euler', 'forwardmap']:
                     nmax = N_model - 1
                 else:
                     nmax = N_model
@@ -342,16 +347,13 @@ class Annealer(object):
         if P0.ndim == 1:
             self.minpaths = np.zeros((self.Nbeta, self.N_model*self.D + self.NP), dtype=np.float64)
         else:
-            if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+            #if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+            if self.disc in ['euler', 'forwardmap']:
                 nmax_p = self.N_model - 1
             else:
                 nmax_p = self.N_model
             self.minpaths = np.zeros((self.Nbeta, self.N_model*self.D + nmax_p*self.NP), 
                                       dtype=np.float64)
-
-        # initialize observed state components to data if desired
-        if init_to_data == True:
-            X0[::self.merr_nskip, self.Lidx] = self.Y[:]
 
         # Flatten X0 and P0 into extended XP0 path vector
         #if self.NPest > 0:
@@ -389,27 +391,26 @@ class Annealer(object):
         from the previous minimum (or the initial guess, if this is the first
         step). Then, RF is increased to prepare for the next annealing step.
         """
-        # minimize A using the chosen method
-        if self.method in ['L-BFGS-B', 'NCG', 'TNC', 'LM']:
+        if self.method in ['L-BFGS-B', 'NCG', 'TNC']:#, LM]:
+            # Decide which path to use at init. If we're on the first step of
+            # annealing, use the seed path specified earlier (before any
+            # optimization has been performed). Otherwise just use the minimizing
+            # path stored previously.
             if self.betaidx == 0:
-                if self.NPest == 0:
-                    XP0 = np.copy(self.minpaths[0][:self.N_model*self.D])
-                elif self.NPest == self.NP:
-                    XP0 = np.copy(self.minpaths[0])
-                else:
-                    X0 = self.minpaths[0][:self.N_model*self.D]
-                    P0 = self.minpaths[0][self.N_model*self.D:][self.Pidx]
-                    XP0 = np.append(X0, P0)
+                mpidx = 0
             else:
-                if self.NPest == 0:
-                    XP0 = np.copy(self.minpaths[self.betaidx-1][:self.N_model*self.D])
-                elif self.NPest == self.NP:
-                    XP0 = np.copy(self.minpaths[self.betaidx-1])
-                else:
-                    X0 = self.minpaths[self.betaidx-1][:self.N_model*self.D]
-                    P0 = self.minpaths[self.betaidx-1][self.N_model*self.D:][self.Pidx]
-                    XP0 = np.append(X0, P0)
+                mpidx = self.betaidx - 1
+            # Now load this path into XP0, the optimization seed.
+            if self.NPest == 0:
+                XP0 = np.copy(self.minpaths[mpidx][:self.N_model*self.D])
+            elif self.NPest == self.NP:
+                XP0 = np.copy(self.minpaths[mpidx])
+            else:
+                X0 = self.minpaths[mpidx][:self.N_model*self.D]
+                P0 = self.minpaths[mpidx][self.N_model*self.D:][self.Pidx]
+                XP0 = np.append(X0, P0)
 
+            # Now minimize using the routine of choice.
             if self.method == 'L-BFGS-B':
                 XPmin, Amin, exitflag, self.taped = \
                     self.minimizer.min_lbfgs_scipy(XP0, self.gen_xtrace(), self.taped)
@@ -430,14 +431,15 @@ class Annealer(object):
 
         # update optimal parameter values
         if self.NPest > 0:
-            if self.P.ndim == 1:
+            if self.P.ndim == 1:  # Time series of parameters
                 if isinstance(XPmin[0], adolc._adolc.adouble):
                     self.P[self.Pidx] = np.array([XPmin[-self.NPest + i].val \
                                                   for i in xrange(self.NPest)])
                 else:
                     self.P[self.Pidx] = np.copy(XPmin[-self.NPest:])
-            else:
-                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+            else:  # Static parameters
+                #if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                if self.disc in ['euler', 'forwardmap']:
                     nmax = self.N_model - 1
                 else:
                     nmax = self.N_model
@@ -451,10 +453,15 @@ class Annealer(object):
                         pi2 = nmax*self.D + (n+1)*self.NPest
                         self.P[n, self.Pidx] = np.copy(XPmin[pi1:pi2])
 
+            # Update parameter values in the action container object.
+            self.A.P = self.P
+
         # store A_min and the minimizing path
         self.A_array[self.betaidx] = Amin
-        self.me_array[self.betaidx] = self.me_gaussian(np.array(XPmin[:self.N_model*self.D]))
-        self.fe_array[self.betaidx] = self.fe_gaussian(np.array(XPmin))
+        self.me_array[self.betaidx] = self.A.meas_err(np.array(XPmin[:self.N_model*self.D]))
+        self.fe_array[self.betaidx] = self.A.model_err(np.array(XPmin))
+        #self.me_array[self.betaidx] = self.me_gaussian(np.array(XPmin[:self.N_model*self.D]))
+        #self.fe_array[self.betaidx] = self.fe_gaussian(np.array(XPmin))
         self.minpaths[self.betaidx] = np.array(np.append(XPmin[:self.N_model*self.D], self.P))
 
         # increase RF
@@ -462,6 +469,7 @@ class Annealer(object):
             self.betaidx += 1
             self.beta = self.beta_array[self.betaidx]
             self.RF = self.RF0 * self.alpha**self.beta
+            self.A.RF = self.RF
 
         # set flags indicating that A needs to be retaped, and that we're no
         # longer at the beginning of the annealing procedure
@@ -502,7 +510,8 @@ class Annealer(object):
         if self.P.ndim == 1:
             savearray = np.resize(self.P, (self.Nbeta, self.NP))
         else:
-            if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+            #if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+            if self.disc in ['euler', 'forwardmap']:
                 savearray = np.resize(self.P, (self.Nbeta, self.N_model - 1, self.NP))
             else:
                 savearray = np.resize(self.P, (self.Nbeta, self.N_model, self.NP))
@@ -512,7 +521,8 @@ class Annealer(object):
                 est_param_array = self.minpaths[:, self.N_model*self.D:]
                 savearray[:, self.Pidx] = est_param_array
             else:
-                if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                #if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+                if self.disc in ['euler', 'forwardmap']:
                     est_param_array = np.reshape(self.minpaths[:, self.N_model*self.D:],
                                                  (self.Nbeta, self.N_model - 1, self.NPest))
                     savearray[:, :, self.Pidx] = est_param_array
@@ -580,7 +590,8 @@ class Annealer(object):
         if self.P.ndim == 1:
             xtrace = np.random.rand(self.N_model*self.D + self.NPest)
         else:
-            if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+            #if self.disc.im_func.__name__ in ["disc_euler", "disc_forwardmap"]:
+            if self.disc in ['euler', 'forwardmap']:
                 xtrace = np.random.rand(self.N_model*self.D + (self.N_model-1)*self.NPest)
             else:
                 xtrace = np.random.rand(self.N_model*(self.D + self.NPest))
