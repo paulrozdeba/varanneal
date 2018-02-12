@@ -16,3 +16,5 @@ varanneal.egg-info
 
 !examples/jupyter-tutorial/Lorenz96/data/*
 !examples/jupyter-tutorial/NaKL/data/*
+
+examples/Lorenz96_D20/varanneal
