@@ -1,0 +1,111 @@
+"""
+Example file for carrying out state and parameter estimation in the Lorenz 96
+system using the weak-constrained variational method.
+
+Varanneal implements the variational annealing algorithm and uses automatic
+differentiation to do the action minimization at each step.
+"""
+
+import numpy as np
+#import varanneal
+from varanneal import va_ode
+import sys, time
+
+# Define the model
+def l96(t, x, k):
+    return np.roll(x,1,1) * (np.roll(x,-1,1) - np.roll(x,2,1)) - x + k
+
+D = 20
+
+################################################################################
+# Action/annealing parameters
+################################################################################
+# Measured variable indices
+#Lidx = [0, 2, 4, 6, 8, 10, 14, 16]
+Lidx = range(20)
+# RM, RF0
+RM = 1.0 / (0.5**2)
+RF0 = 1.0e-6 * RM
+# alpha, and beta ladder
+alpha = 1.5
+beta_array = np.linspace(0, 100, 101)
+
+################################################################################
+# Load observed data
+################################################################################
+N_data = 11
+data = np.load("l96_D20_dt0p025_N161_sm0p5_sec1_mem1.npy")[:N_data]
+times_data = data[:, 0]
+#t0 = times_data[0]
+#tf = times_data[-1]
+dt_data = times_data[1] - times_data[0]
+#N_data = len(times_data)
+
+data = data[:, 1:]
+data = data[:, Lidx]
+
+################################################################################
+# Initial path/parameter guesses
+################################################################################
+# Same sampling rate for data and forward mapping
+dt_model = dt_data
+N_model = N_data
+X0 = (20.0*np.random.rand(N_model * D) - 10.0).reshape((N_model, D))
+
+# Define the constraint function
+def g1(XP):
+    x = np.reshape(XP[:N_model*D], (N_model, D))
+    p = XP[N_model*D:]
+    dg = x[1:] - x[:-1] - dt_model*l96(0.0, x[:-1], p)
+    dg = dg.flatten()
+    return np.array([np.sum(dg * dg) / dt_model])
+
+x_L = np.append(-30.0*np.ones(N_model*D), np.array([2.0]))
+x_U = np.append(30.0*np.ones(N_model*D), np.array([10.0]))
+x_L = np.resize(x_L, (len(beta_array), len(x_L)))
+x_U = np.resize(x_U, (len(beta_array), len(x_U)))
+g_L = 0.9 * np.ones((len(beta_array), 1))
+g_U = 1.1 * np.ones((len(beta_array), 1))
+
+# Sample forward mapping twice as f
+#dt_model = dt_data / 2.0
+#meas_nskip = 2
+#N_model = (N_data - 1) * meas_nskip + 1
+#X0 = (20.0*np.random.rand(N_model * D) - 10.0).reshape((N_model, D))
+
+# Below lines are for initializing measured components to data; instead, we
+# use the convenience option "init_to_data=True" in the anneal() function below.
+#for i,l in enumerate(Lidx):
+#    Xinit[:, l] = data[:, i]
+#Xinit = Xinit.flatten()
+
+# Parameters
+Pidx = [0]  # indices of estimated parameters
+# Initial guess
+P0 = np.array([4.0 * np.random.rand() + 6.0])  # Static parameter
+#Pinit = 4.0 * np.random.rand(N_model, 1) + 6.0  # Time-dependent parameter
+
+################################################################################
+# Annealing
+################################################################################
+# Initialize Annealer
+anneal1 = va_ode.Annealer()
+# Set the Lorenz 96 model
+anneal1.set_model(l96, D)
+# Load the data into the Annealer object
+anneal1.set_data(data, t=times_data)
+# Initialize IPOPT
+anneal1.ipopt_init(g1, x_L, x_U, g_L, g_U)
+
+# Run the annealing using L-BFGS-B
+#BFGS_options = {'gtol':1.0e-8, 'ftol':1.0e-8, 'maxfun':1000000, 'maxiter':1000000}
+tstart = time.time()
+anneal1.anneal(X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, dt_model=dt_model,
+               init_to_data=True, disc='SimpsonHermite', method='IPOPT',
+               adolcID=0)
+print("\nADOL-C annealing completed in %f s."%(time.time() - tstart))
+
+# Save the results of annealing
+anneal1.save_paths("paths.npy")
+anneal1.save_params("params.npy")
+anneal1.save_action_errors("action_errors.npy")

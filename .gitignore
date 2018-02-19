@@ -16,3 +16,5 @@ varanneal.egg-info
 
 !examples/jupyter-tutorial/Lorenz96/data/*
 !examples/jupyter-tutorial/NaKL/data/*
+
+examples/IPOPT/Lorenz96_D20/Lorenz96_anneal_autograd.py

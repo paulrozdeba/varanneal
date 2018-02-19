@@ -60,7 +60,7 @@ class Eval_hess_lgr(object):
             return (self.rind[self.mask], self.cind[self.mask])
         else:
             x = np.hstack([XP, lgr_mult, obj_fac])
-            result = adolc.colpack.sparse_hess_repeat(self.hID, x, self.nnz, self.rind,
+            result = adolc.colpack.sparse_hess_repeat(self.hID, x, self.rind,
                 self.cind, self.values)
             return result[3][self.mask]
 
