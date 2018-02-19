@@ -48,28 +48,25 @@ class Annealer(object):
     assimilation using VA.  It inherits the function minimization routines
     from ADmin, which uses automatic differentiation.
     """
-    def __init__(self, ipopt_flag=False):
+    def __init__(self):
         """
         Constructor for the Annealer class.
         - Set ipopt_flag = True if you plan to use IPOPT for optimization.
         """
-        self.taped = False
+        self.A_taped_flag = False
         self.annealing_initialized = False
         self.dt_model = None
+        self.ipopt_flag = False  # assume no IPOPT by default
+        self.minimizer = None
 
-        self.ipopt_flag = ipopt_flag  # Are you using IPOPT?
-        if self.ipopt_flag:
-            self.ipopt_g_taped = False  # Constraints not yet taped
-            self.ipopt_lgr_taped = False  # Lagrangian not yet taped
-
-    def set_model(self, f, D):
-        """
-        Set the action function.
-        action should be a callable class instantiation; see default_actions
-        for some examples.  It must be properly instantiated and ready to go
-        BEFORE being loaded in here.
-        """
-        self.A = action
+    #def set_action(self, action):
+    #    """
+    #    Set the action function.
+    #    action should be a callable class instantiation; see default_actions
+    #    for some examples.  It must be properly instantiated and ready to go
+    #    BEFORE being loaded in here.
+    #    """
+    #    self.A = action
 
     def set_model(self, f, D, dt_model=None):
         """
@@ -144,6 +141,23 @@ class Annealer(object):
             else:
                 self.stim = None
 
+    def ipopt_init(self, g, x_L, x_U, g_L, g_U):
+        """
+        Initialize IPOPT hyperparameters and other settings.
+        g - Equations of constraint
+        x_L, x_U - Lower and upper bounds for solutions.
+        g_L, g_U - Lower and upper bounds for constraints.
+        """
+        self.ipopt_flag = True  # Using IPOPT
+        self.g_taped_flag = False  # Constraints not yet taped
+        self.lgr_taped_flag = False  # Lagrangian not yet taped
+
+        self.ipopt_g = g
+        self.ipopt_x_L = x_L
+        self.ipopt_x_U = x_U
+        self.ipopt_g_L = g_L
+        self.ipopt_g_U = g_U
+
     ############################################################################
     # Annealing functions
     ############################################################################
@@ -180,44 +194,49 @@ class Annealer(object):
 
             self.anneal_step()
 
-            # Track progress by saving to file after every step
-            if track_paths is not None:
-                try:
-                    dtype = track_paths['dtype']
-                except:
-                    dtype = np.float64
-                try:
-                    fmt = track_paths['fmt']
-                except:
-                    fmt = "%.8e"
-                self.save_paths(track_paths['filename'], dtype, fmt)
+            # Track progress by saving to file after every step, if specified
+            self.track_progress(track_paths, track_params, track_action_errors)
 
-            if track_params is not None:
-                try:
-                    dtype = track_params['dtype']
-                except:
-                    dtype = np.float64
-                try:
-                    fmt = track_params['fmt']
-                except:
-                    fmt = "%.8e"
-                self.save_params(track_params['filename'], dtype, fmt)
+    def track_progress(self, track_paths=False, track_params=False, track_action_errors=False):
+        """
+        Track progress.
+        """
+        if track_paths is not None:
+            try:
+                dtype = track_paths['dtype']
+            except:
+                dtype = np.float64
+            try:
+                fmt = track_paths['fmt']
+            except:
+                fmt = "%.8e"
+            self.save_paths(track_paths['filename'], dtype, fmt)
 
-            if track_action_errors is not None:
-                try:
-                    cmpt = track_action_errors['cmpt']
-                except:
-                    cmpt = 0
-                try:
-                    dtype = track_action_errors['dtype']
-                except:
-                    dtype = np.float64
-                try:
-                    fmt = track_action_errors['fmt']
-                except:
-                    fmt = "%.8e"
-                self.save_action_errors(track_action_errors['filename'], cmpt, dtype, fmt)
-            
+        if track_params is not None:
+            try:
+                dtype = track_params['dtype']
+            except:
+                dtype = np.float64
+            try:
+                fmt = track_params['fmt']
+            except:
+                fmt = "%.8e"
+            self.save_params(track_params['filename'], dtype, fmt)
+
+        if track_action_errors is not None:
+            try:
+                cmpt = track_action_errors['cmpt']
+            except:
+                cmpt = 0
+            try:
+                dtype = track_action_errors['dtype']
+            except:
+                dtype = np.float64
+            try:
+                fmt = track_action_errors['fmt']
+            except:
+                fmt = "%.8e"
+            self.save_action_errors(track_action_errors['filename'], cmpt, dtype, fmt)
 
     def anneal_init(self, X0, P0, alpha, beta_array, RM, RF0, Lidx, Pidx, dt_model=None,
                     init_to_data=True, action='A_gaussian', disc='trapezoid',
@@ -230,90 +249,90 @@ class Annealer(object):
         self.beta_array = np.array(beta_array, dtype=np.uint16)
         self.Nbeta = len(self.beta_array)
 
-        if action == 'A_gaussian':
-            # Separate dt_data and dt_model not supported yet if there is an external stimulus.
-            if dt_model is not None and dt_model != self.dt_data and self.stim is not None:
-                print("Error! Separate dt_data and dt_model currently not supported with an " +\
-                      "external stimulus. Exiting.")
-                sys.exit(1)
+        #if action == 'A_gaussian':
+        # Separate dt_data and dt_model not supported yet if there is an external stimulus.
+        if dt_model is not None and dt_model != self.dt_data and self.stim is not None:
+            print("Error! Separate dt_data and dt_model currently not supported with an " +\
+                  "external stimulus. Exiting.")
+            sys.exit(1)
+        else:
+            if dt_model is None and self.dt_model is None:
+                self.dt_model = self.dt_data
+                self.N_model = self.N_data
+                self.merr_nskip = 1
+                self.t_model = np.copy(self.t_data)
             else:
-                if dt_model is None and self.dt_model is None:
-                    self.dt_model = self.dt_data
-                    self.N_model = self.N_data
-                    self.merr_nskip = 1
-                    self.t_model = np.copy(self.t_data)
-                else:
-                    self.dt_model = dt_model
-                    self.merr_nskip = int(self.dt_data / self.dt_model)
-                    self.N_model = (self.N_data - 1) * self.merr_nskip + 1
-                    self.t_model = np.linspace(self.t_data[0], self.t_data[-1], self.N_model)
+                self.dt_model = dt_model
+                self.merr_nskip = int(self.dt_data / self.dt_model)
+                self.N_model = (self.N_data - 1) * self.merr_nskip + 1
+                self.t_model = np.linspace(self.t_data[0], self.t_data[-1], self.N_model)
 
-            # set up parameters and determine if static or time series
-            self.P = P0
-            if P0.ndim == 1:
-                # Static parameters, so p is a single vector.
-                self.NP = len(P0)
-            else:
-                # Time-dependent parameters, so p is a time series of N values.
-                self.NP = P0.shape[1]
+        # set up parameters and determine if static or time series
+        self.P = P0
+        if P0.ndim == 1:
+            # Static parameters, so p is a single vector.
+            self.NP = len(P0)
+        else:
+            # Time-dependent parameters, so p is a time series of N values.
+            self.NP = P0.shape[1]
 
-            # get indices of parameters to be estimated by annealing
-            self.Pidx = Pidx
-            self.NPest = len(Pidx)
+        # get indices of parameters to be estimated by annealing
+        self.Pidx = Pidx
+        self.NPest = len(Pidx)
 
-            # get indices of measured components of f
-            self.Lidx = Lidx
-            self.L = len(Lidx)
+        # get indices of measured components of f
+        self.Lidx = Lidx
+        self.L = len(Lidx)
 
-            # initialize observed state components to data if desired
-            if init_to_data == True:
-                X0[::self.merr_nskip, self.Lidx] = self.Y[:]
+        # initialize observed state components to data if desired
+        if init_to_data == True:
+            X0[::self.merr_nskip, self.Lidx] = self.Y[:]
 
-            # Reshape RM and RF so that they span the whole time series, if they
-            # are passed in as vectors or matrices. This is done because in the
-            # action evaluation, it is more efficient to let numpy handle
-            # multiplication over time rather than using python loops.
-            # If RM or RF is already passed in as a time series, move on!
-            if type(RM) == list:
-                RM = np.array(RM)
-            if type(RM) == np.ndarray:
-                if RM.shape == (self.L,):
-                    self.RM = np.resize(RM, (self.N_data, self.L))
-                elif RM.shape == (self.L, self.L):
-                    self.RM = np.resize(RM, (self.N_data, self.L, self.L))
-                elif RM.shape in [(self.N_data, self.L), (self.N_data, self.L, self.L)]:
-                    self.RM = RM
-                else:
-                    print("ERROR: RM has an invalid shape. Exiting.")
-                    sys.exit(1)
-            else:
+        # Reshape RM and RF so that they span the whole time series, if they
+        # are passed in as vectors or matrices. This is done because in the
+        # action evaluation, it is more efficient to let numpy handle
+        # multiplication over time rather than using python loops.
+        # If RM or RF is already passed in as a time series, move on!
+        if type(RM) == list:
+            RM = np.array(RM)
+        if type(RM) == np.ndarray:
+            if RM.shape == (self.L,):
+                self.RM = np.resize(RM, (self.N_data, self.L))
+            elif RM.shape == (self.L, self.L):
+                self.RM = np.resize(RM, (self.N_data, self.L, self.L))
+            elif RM.shape in [(self.N_data, self.L), (self.N_data, self.L, self.L)]:
                 self.RM = RM
-
-            if type(RF0) == list:
-                RF0 = np.array(RF0)
-            if type(RF0) == np.ndarray:
-                if RF0.shape == (self.D,):
-                    self.RF0 = np.resize(RF0, (self.N_model - 1, self.D))
-                elif RF0.shape == (self.D, self.D):
-                    self.RF0 = np.resize(RF0, (self.N_model - 1, self.D, self.D))
-                elif RF0.shape in [(self.N_model - 1, self.D), (self.N_model - 1, self.D, self.D)]:
-                    self.RF0 = RF0
-                else:
-                    print("ERROR: RF0 has an invalid shape. Exiting.")
-                    sys.exit(1)
             else:
+                print("ERROR: RM has an invalid shape. Exiting.")
+                sys.exit(1)
+        else:
+            self.RM = RM
+
+        if type(RF0) == list:
+            RF0 = np.array(RF0)
+        if type(RF0) == np.ndarray:
+            if RF0.shape == (self.D,):
+                self.RF0 = np.resize(RF0, (self.N_model - 1, self.D))
+            elif RF0.shape == (self.D, self.D):
+                self.RF0 = np.resize(RF0, (self.N_model - 1, self.D, self.D))
+            elif RF0.shape in [(self.N_model - 1, self.D), (self.N_model - 1, self.D, self.D)]:
                 self.RF0 = RF0
+            else:
+                print("ERROR: RF0 has an invalid shape. Exiting.")
+                sys.exit(1)
+        else:
+            self.RF0 = RF0
 
-            # set initial RF
-            self.betaidx = 0
-            self.beta = self.beta_array[self.betaidx]
-            self.RF = self.RF0 * self.alpha**self.beta
+        # set initial RF
+        self.betaidx = 0
+        self.beta = self.beta_array[self.betaidx]
+        self.RF = self.RF0 * self.alpha**self.beta
 
-            self.A = default_actions.GaussianAction(self.N_model, self.D, self.merr_nskip,
-                    len(Lidx), Lidx, self.Y, RM, self.N_data, P0, len(P0), len(Pidx),
-                    disc, RF0, self.stim, self.f, self.t_model, self.dt_model)
+        self.A = default_actions.GaussianAction(self.N_model, self.D, self.merr_nskip,
+                len(Lidx), Lidx, self.Y, RM, self.N_data, P0, len(P0), len(Pidx),
+                disc, RF0, self.stim, self.f, self.t_model, self.dt_model)
 
-        if method not in ('L-BFGS-B', 'NCG', 'LM', 'TNC'):
+        if method not in ('L-BFGS-B', 'NCG', 'LM', 'TNC', 'IPOPT'):
             print("ERROR: Optimization routine not recognized. Annealing not initialized.")
             return None
         else:
@@ -386,8 +405,11 @@ class Annealer(object):
         # set the adolcID
         self.adolcID = adolcID
 
-        # Finally, initialize an ADmin instance
-        self.minimizer = ADmin(self.A, self.opt_args, self.bounds, self.adolcID)
+        # Finally, initialize an ADmin or ADipopt instance
+        if not self.ipopt_flag:
+            self.minimizer = ADmin(self.A, self.opt_args, self.bounds, self.adolcID)
+        else:
+            self.minimizer = ADipopt(self.A, self.adolcID)
 
         # Initialization successful, we're at the beta = beta_0 step now.
         self.initalized = True
@@ -398,7 +420,14 @@ class Annealer(object):
         from the previous minimum (or the initial guess, if this is the first
         step). Then, RF is increased to prepare for the next annealing step.
         """
-        if self.method in ['L-BFGS-B', 'NCG', 'TNC']:#, LM]:
+        # Set IPOPT constraints
+        if self.ipopt_flag:
+            bi = self.betaidx
+            self.minimizer.set_ipopt_constraints(self.ipopt_g,
+                                                 self.ipopt_x_L[bi], self.ipopt_x_U[bi],
+                                                 self.ipopt_g_L[bi], self.ipopt_g_U[bi])
+
+        if self.method in ['L-BFGS-B', 'NCG', 'TNC', 'IPOPT']:#, LM]:
             # Decide which path to use at init. If we're on the first step of
             # annealing, use the seed path specified earlier (before any
             # optimization has been performed). Otherwise just use the minimizing
@@ -419,14 +448,20 @@ class Annealer(object):
 
             # Now minimize using the routine of choice.
             if self.method == 'L-BFGS-B':
-                XPmin, Amin, exitflag, self.taped = \
-                    self.minimizer.min_lbfgs_scipy(XP0, self.gen_xtrace(), self.taped)
+                #XPmin, Amin, exitflag, self.A_taped_flag = \
+                XPmin, Amin, exitflag = \
+                    self.minimizer.min_lbfgs_scipy(XP0, self.gen_xtrace(), self.A_taped_flag)
             elif self.method == 'NCG':
-                XPmin, Amin, exitflag, self.taped = \
-                    self.minimizer.min_cg_scipy(XP0, self.gen_xtrace(), self.taped)
+                #XPmin, Amin, exitflag, self.A_taped_flag = \
+                XPmin, Amin, exitflag = \
+                    self.minimizer.min_cg_scipy(XP0, self.gen_xtrace(), self.A_taped_flag)
             elif self.method == 'TNC':
-                XPmin, Amin, exitflag , self.taped = \
-                    self.minimizer.min_tnc_scipy(XP0, self.gen_xtrace(), self.taped)
+                #XPmin, Amin, exitflag, self.A_taped_flag = \
+                XPmin, Amin, exitflag = \
+                    self.minimizer.min_tnc_scipy(XP0, self.gen_xtrace(), self.A_taped_flag)
+            elif self.method == 'IPOPT':
+                #XPmin, Amin, exitflag, self.A_taped_flag, self.g_taped_flag, self.lgr_taped_flag = self.minimizer.min_ipopt(XP0, self.N_model*self.D + self.NPest, self.gen_xtrace(), self.gen_lgr_mult_trace(), self.gen_obj_fac_trace(), self.A_taped_flag, self.g_taped_flag, self.lgr_taped_flag)
+                XPmin, Amin, exitflag = self.minimizer.min_ipopt(XP0, self.N_model*self.D + self.NPest, self.gen_xtrace(), self.gen_lgr_mult_trace(), self.gen_obj_fac_trace(), self.A_taped_flag, self.g_taped_flag, self.lgr_taped_flag)
             #elif self.method == 'LM':
             #    XPmin, Amin, exitflag = self.min_lm_scipy(XP0)
             else:
@@ -477,10 +512,13 @@ class Annealer(object):
             self.beta = self.beta_array[self.betaidx]
             self.RF = self.RF0 * self.alpha**self.beta
             self.A.RF = self.RF
+            # RF increased ==> need to retape before next step
+            self.A_taped_flag = False
+            if self.ipopt_flag:
+                self.g_taped_flag = False
+                self.lgr_taped_flag = False
 
-        # set flags indicating that A needs to be retaped, and that we're no
-        # longer at the beginning of the annealing procedure
-        self.A_taped = False
+        # set flag indicating that we're no longer at the beginning of the annealing procedure
         if self.annealing_initialized:
             # Indicate no longer at beta_0
             self.initialized = False
@@ -603,3 +641,17 @@ class Annealer(object):
             else:
                 xtrace = np.random.rand(self.N_model*(self.D + self.NPest))
         return xtrace
+
+    def gen_lgr_mult_trace(self):
+        """
+        Define random values for lagrange multipliers for ADOLC trace.
+        """
+        lgr_mult_trace = np.random.rand(self.minimizer.ncon)
+        return lgr_mult_trace
+
+    def gen_obj_fac_trace(self):
+        """
+        Define a random value for the objective function factor value for tracing.
+        """
+        obj_fac_trace = np.random.rand()
+        return obj_fac_trace

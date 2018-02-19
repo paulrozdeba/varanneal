@@ -71,16 +71,16 @@ class ADmin(object):
     ################################################################################
     # Minimization functions
     ################################################################################
-    def min_lbfgs_scipy(self, XP0, xtrace=None, taped=False):
+    def min_lbfgs_scipy(self, XP0, xtrace=None, A_taped_flag=False):
         """
         Minimize f starting from XP0 using L-BFGS-B method in scipy.
         This method supports the use of bounds.
         Returns the minimizing state, the minimum function value, and the L-BFGS
         termination information.
         """
-        if not taped:
+        if not A_taped_flag:
             self.tape_A(xtrace)
-            taped = True
+            #A_taped_flag = True
 
         # start the optimization
         print("Beginning optimization...")
@@ -95,17 +95,17 @@ class ADmin(object):
         print("Exit message: {0}".format(res.message))
         print("Iterations = {0}".format(res.nit))
         print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status, taped
+        return XPmin, Amin, status#, A_taped_flag
 
-    def min_cg_scipy(self, XP0, xtrace=None, taped=False):
+    def min_cg_scipy(self, XP0, xtrace=None, A_taped_flag=False):
         """
         Minimize f starting from XP0 using nonlinear CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
-        if not taped:
+        if not A_taped_flag:
             self.tape_A(xtrace)
-            taped = True
+            #A_taped_flag = True
 
         # start the optimization
         print("Beginning optimization...")
@@ -120,17 +120,17 @@ class ADmin(object):
         print("Exit message: {0}".format(res.message))
         print("Iterations = {0}".format(res.nit))
         print("Obj. function value = {0}\n".format(Amin))
-        return XPmin, Amin, status, taped
+        return XPmin, Amin, status#, taped
 
-    def min_tnc_scipy(self, XP0, xtrace=None, taped=False):
+    def min_tnc_scipy(self, XP0, xtrace=None, A_taped_flag=False):
         """
         Minimize f starting from XP0 using Newton-CG method in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
-        if not taped:
+        if not A_taped_flag:
             self.tape_A(xtrace)
-            taped = True
+            #taped = True
 
         # start the optimization
         print("Beginning optimization...")
@@ -147,15 +147,15 @@ class ADmin(object):
         print("Obj. function value = {0}\n".format(Amin))
         return XPmin, Amin, status, taped
 
-    def min_lm_scipy(self, XP0, xtrace=None, taped=False):
+    def min_lm_scipy(self, XP0, xtrace=None, A_taped_flag=False):
         """
         Minimize f starting from XP0 using Levenberg-Marquardt in scipy.
         Returns the minimizing state, the minimum function value, and the CG
         termination information.
         """
-        if not taped:
+        if not A_taped_flag:
             self.tape_A(xtrace)
-            taped = True
+            #A_taped_flag = True
 
         # start the optimization
         print("Beginning optimization...")
